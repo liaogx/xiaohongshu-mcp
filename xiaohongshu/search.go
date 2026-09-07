@@ -1,0 +1,471 @@
+// Modified in the liaogx/xiaohongshu-mcp distribution; see NOTICE.
+
+package xiaohongshu
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/go-rod/rod"
+	"github.com/liaogx/xiaohongshu-mcp/errors"
+	"github.com/liaogx/xiaohongshu-mcp/humanize"
+)
+
+type SearchResult struct {
+	Search struct {
+		Feeds FeedsValue `json:"feeds"`
+	} `json:"search"`
+}
+
+// FilterOption 筛选选项结构体
+type FilterOption struct {
+	SortBy      string `json:"sort_by,omitempty" jsonschema:"排序依据: 综合|最新|最多点赞|最多评论|最多收藏,默认为'综合'"`
+	NoteType    string `json:"note_type,omitempty" jsonschema:"笔记类型: 不限|视频|图文,默认为'不限'"`
+	PublishTime string `json:"publish_time,omitempty" jsonschema:"发布时间: 不限|一天内|一周内|半年内,默认为'不限'"`
+	SearchScope string `json:"search_scope,omitempty" jsonschema:"搜索范围: 不限|已看过|未看过|已关注,默认为'不限'"`
+	Location    string `json:"location,omitempty" jsonschema:"位置距离: 不限|同城|附近,默认为'不限'"`
+}
+
+// filterGroup 面板上的一个筛选组：标签是什么、对应入参的哪个字段、允许哪些取值。
+//
+// 组和选项一律按文本定位，不用序号。面板里同一个选项可能渲染成多个 div.tags
+// （数量随视口而变），首项是否重复各组也不一致，下标对不齐。
+type filterGroup struct {
+	label   string                    // 面板上这一组的标签文本
+	pick    func(FilterOption) string // 从入参里取这一组的值
+	allowed []string                  // 合法取值；在打开页面之前就能挡掉写错的值
+}
+
+var filterGroups = []filterGroup{
+	{"排序依据", func(f FilterOption) string { return f.SortBy },
+		[]string{"综合", "最新", "最多点赞", "最多评论", "最多收藏"}},
+	{"笔记类型", func(f FilterOption) string { return f.NoteType },
+		[]string{"不限", "视频", "图文"}},
+	{"发布时间", func(f FilterOption) string { return f.PublishTime },
+		[]string{"不限", "一天内", "一周内", "半年内"}},
+	{"搜索范围", func(f FilterOption) string { return f.SearchScope },
+		[]string{"不限", "已看过", "未看过", "已关注"}},
+	{"位置距离", func(f FilterOption) string { return f.Location },
+		[]string{"不限", "同城", "附近"}},
+}
+
+// pendingFilter 一个待应用的筛选项。
+type pendingFilter struct {
+	group  string // 组标签
+	option string // 选项文本
+}
+
+// collectFilters 把入参展开成待应用的筛选项，顺便校验取值。
+//
+// 校验放在这里是为了在打开浏览器之前就挡掉写错的值——否则要等导航、悬停、
+// 在面板里找不到之后才能报错，等于为了说一句"你写错了"先向平台发一次请求。
+func collectFilters(filters []FilterOption) ([]pendingFilter, error) {
+	var pending []pendingFilter
+
+	for _, f := range filters {
+		for _, g := range filterGroups {
+			value := g.pick(f)
+			if value == "" {
+				continue
+			}
+			if !slices.Contains(g.allowed, value) {
+				return nil, fmt.Errorf("%s 不支持 %q，可选：%s",
+					g.label, value, strings.Join(g.allowed, "、"))
+			}
+			pending = append(pending, pendingFilter{group: g.label, option: value})
+		}
+	}
+
+	return pending, nil
+}
+
+type SearchAction struct {
+	page *rod.Page
+}
+
+func NewSearchAction(page *rod.Page) *SearchAction {
+	pp := page.Timeout(60 * time.Second)
+
+	return &SearchAction{page: pp}
+}
+
+func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...FilterOption) ([]Feed, error) {
+	// 先校验筛选取值，必须在导航之前——写错的值不该先向平台发一次请求再报错。
+	pending, err := collectFilters(filters)
+	if err != nil {
+		return nil, err
+	}
+
+	// 注意 .Context(ctx) 会替换掉 NewSearchAction 里设的 60s deadline，必须在其后重新 Timeout，
+	// 否则搜索页不 stable 时 MustWaitStable/MustWait 会永久挂起（无 deadline 可依赖）。
+	page := s.page.Context(ctx).Timeout(60 * time.Second)
+
+	searchURL := makeSearchURL(keyword)
+	if err := page.Navigate(searchURL); err != nil {
+		return nil, fmt.Errorf("打开搜索页失败: %w", err)
+	}
+	// 等的是搜索结果本身落地。
+	//
+	// 原先是 MustWaitStable：要求「DOM 零变化 + 网络空闲 + load 完成」三者同时成立，
+	// 而搜索页有懒加载图片、视频预览和无限滚动占位，这个条件实测无法达成，只会一路耗到
+	// 60s deadline 后 panic（容器日志三天内 32 次 search_feeds context deadline exceeded）。
+	//
+	// 但也不能只等 __INITIAL_STATE__ 这个壳：壳在页面初始化时就有了，feeds 要等接口回来
+	// 才填。只检查壳会在慢网络下提前放行，而下面的提取是一次性的、没有重试，拿到空值就直接
+	// 报 ErrNoFeeds——表现为"没搜到结果"，比 panic 更难排查。故这里等到 feeds 真正有值。
+	//
+	// .value / ._value 两种形态都要认，与下面的提取逻辑和 feedIDsJS 保持一致。
+	// 搜索确实无结果时也会等满超时，交给下面的提取按 ErrNoFeeds 正常处理。
+	if err := waitForSearchData(page, 20*time.Second); err != nil {
+		return nil, err
+	}
+	humanize.Delay(ctx, humanize.AfterNavigate)
+
+	if len(pending) > 0 {
+		// 悬停在筛选按钮上展开面板
+		filterButton, err := page.Element(`div.filter`)
+		if err != nil {
+			return nil, fmt.Errorf("读取筛选按钮失败: %w", err)
+		}
+		if err := filterButton.Timeout(3 * time.Second).Hover(); err != nil {
+			return nil, fmt.Errorf("悬停筛选按钮失败: %w", err)
+		}
+		humanize.Delay(ctx, humanize.BeforeClick)
+
+		// 等待筛选面板出现
+		if err := page.Timeout(8 * time.Second).Wait(rod.Eval(`() => document.querySelector('div.filter-panel') !== null`)); err != nil {
+			return nil, fmt.Errorf("筛选面板未在 8s 内出现: %w", err)
+		}
+
+		// 用 ClickNoWait：筛选面板是 hover 浮层，rod 的 WaitInteractable 会误判被遮挡而死等；
+		// ClickNoWait 移进面板内选项（维持 hover、面板不关）再点。
+		for _, pf := range pending {
+			// Changing a filter can collapse the hover panel. Reopen it before
+			// looking up the next option, and never click an already-selected default.
+			filterButton, err = page.Timeout(3 * time.Second).Element(`div.filter`)
+			if err != nil {
+				return nil, fmt.Errorf("重新读取筛选按钮失败: %w", err)
+			}
+			if err := filterButton.Timeout(3 * time.Second).Hover(); err != nil {
+				return nil, fmt.Errorf("重新打开筛选面板失败: %w", err)
+			}
+			if err := page.Timeout(3 * time.Second).Wait(rod.Eval(`() => {
+				const p=document.querySelector('div.filter-panel');
+				return !!p && p.getBoundingClientRect().height>0;
+			}`)); err != nil {
+				return nil, fmt.Errorf("筛选面板不可见: %w", err)
+			}
+			option, err := findFilterOption(page, pf)
+			if err != nil {
+				return nil, err
+			}
+			if selected, err := filterOptionSelected(option); err != nil {
+				return nil, err
+			} else if selected {
+				continue
+			}
+			before := readFeedIDs(page)
+			humanize.Delay(ctx, humanize.BeforeClick)
+			// The floating panel disappears if an animated pointer path briefly
+			// leaves it. Activate only the exact, visible filter leaf atomically.
+			clicked, err := page.Eval(filterClickJS, pf.group, pf.option)
+			if err != nil {
+				return nil, fmt.Errorf("点击筛选选项「%s」失败: %w", pf.option, err)
+			}
+			if !clicked.Value.Bool() {
+				return nil, fmt.Errorf("点击筛选选项「%s」失败: 当前选项不可见", pf.option)
+			}
+			// Vue replaces these nodes after selection; wait on the live document,
+			// not the detached element handle that was clicked.
+			if err := page.Timeout(3 * time.Second).Wait(rod.Eval(filterSelectedJS, pf.group, pf.option)); err != nil {
+				return nil, fmt.Errorf("FILTER_SELECTION_UNCONFIRMED: 未确认「%s=%s」选中: %w", pf.group, pf.option, err)
+			}
+			if err := waitFeedsChanged(page, before, 12*time.Second); err != nil {
+				return nil, fmt.Errorf("%s=%s: %w", pf.group, pf.option, err)
+			}
+		}
+		for _, pf := range pending {
+			selected, err := page.Eval(filterSelectedJS, pf.group, pf.option)
+			if err != nil {
+				return nil, err
+			}
+			if !selected.Value.Bool() {
+				return nil, fmt.Errorf("FILTER_SELECTION_UNCONFIRMED: 最终选中状态不符「%s=%s」", pf.group, pf.option)
+			}
+		}
+	}
+
+	resultEval, err := page.Eval(`() => {
+		if (window.__INITIAL_STATE__ &&
+		    window.__INITIAL_STATE__.search &&
+		    window.__INITIAL_STATE__.search.feeds) {
+			const feeds = window.__INITIAL_STATE__.search.feeds;
+			const feedsData = feeds.value !== undefined ? feeds.value : feeds._value !== undefined ? feeds._value : feeds;
+			if (feedsData) {
+				return JSON.stringify(feedsData);
+			}
+		}
+		return "";
+	}`)
+	if err != nil {
+		return nil, fmt.Errorf("读取搜索结果失败: %w", err)
+	}
+	result := resultEval.Value.Str()
+
+	if result == "" {
+		return nil, errors.ErrNoFeeds
+	}
+
+	var feeds []Feed
+	if err := json.Unmarshal([]byte(result), &feeds); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal feeds: %w", err)
+	}
+
+	return onlyNotes(feeds), nil
+}
+
+// searchPageProbe 是搜索数据未落地时的最小诊断快照。
+// 只记录状态和计数，不记录正文、Cookie、令牌或页面内容，便于区分登录失效、平台限流和页面异常。
+type searchPageProbe struct {
+	PagePath        string   `json:"pagePath"`
+	SecurityPage    bool     `json:"securityPage"`
+	LoginVisible    bool     `json:"loginVisible"`
+	Authenticated   bool     `json:"authenticated"`
+	GuestUser       bool     `json:"guestUser"`
+	ReadyState      string   `json:"readyState"`
+	HasInitialState bool     `json:"hasInitialState"`
+	HasSearchState  bool     `json:"hasSearchState"`
+	FeedCount       int      `json:"feedCount"`
+	NoteItemCount   int      `json:"noteItemCount"`
+	Markers         []string `json:"markers"`
+}
+
+func readSearchPageProbe(page *rod.Page) (*searchPageProbe, error) {
+	result, err := page.Eval(`() => {
+		const body = (document.body && document.body.innerText) || "";
+		const state = window.__INITIAL_STATE__;
+		const unwrap = x => x && (x.value !== undefined ? x.value : x._value !== undefined ? x._value : x);
+		const info = unwrap(state && state.user && state.user.userInfo);
+		const feeds = state && state.search && state.search.feeds;
+		const value = unwrap(feeds);
+		const login = document.querySelector('.login-container');
+		const loginVisible = !!login && login.getClientRects().length > 0 && getComputedStyle(login).visibility !== 'hidden';
+		const securityPage = /\/website-login\/(captcha|verify)(\/|$)/.test(location.pathname)
+			|| /安全验证|身份验证/.test(document.title)
+			|| (!state && /扫码验证身份|验证后继续/.test(body));
+		const markerTexts = [
+			"访问频繁", "操作频繁", "安全验证", "验证后继续", "验证码",
+			"网络异常", "请求失败", "加载失败", "请稍后再试"
+		];
+		return JSON.stringify({
+			pagePath: location.pathname,
+			securityPage,
+			loginVisible,
+			authenticated: !!(info && !info.guest && (info.userId || info.user_id)),
+			guestUser: !!(info && info.guest === true),
+			readyState: document.readyState,
+			hasInitialState: typeof window.__INITIAL_STATE__ !== "undefined",
+			hasSearchState: !!(state && state.search),
+			feedCount: Array.isArray(value) ? value.length : 0,
+			noteItemCount: document.querySelectorAll(".note-item").length,
+			markers: markerTexts.filter(marker => body.includes(marker))
+		});
+	}`)
+	if err != nil {
+		return nil, err
+	}
+
+	var probe searchPageProbe
+	if err := json.Unmarshal([]byte(result.Value.Str()), &probe); err != nil {
+		return nil, err
+	}
+	return &probe, nil
+}
+
+// PageAccessError distinguishes account login from the platform's manual security
+// challenge. The message intentionally contains no full URL, token or QR data.
+type PageAccessError struct {
+	Code string
+}
+
+func (e *PageAccessError) Error() string {
+	if e.Code == "SECURITY_VERIFICATION_REQUIRED" {
+		return e.Code + ": 小红书要求使用已登录账号的 App 扫码进行安全验证；普通登录有效不代表搜索已获准。暂停搜索及互动，完成 MCP 同一会话的人工验证并保存状态后再试"
+	}
+	return e.Code + ": 小红书显示登录窗口；暂停搜索及互动，使用 MCP 登录二维码重新登录后再试"
+}
+
+func (p *searchPageProbe) accessError() error {
+	if p.SecurityPage {
+		return &PageAccessError{Code: "SECURITY_VERIFICATION_REQUIRED"}
+	}
+	if p.LoginVisible {
+		return &PageAccessError{Code: "AUTH_REQUIRED"}
+	}
+	return nil
+}
+
+// Poll both data and access gates. A CAPTCHA used to wait the full timeout and
+// then be misreported as missing feeds because its warning is in the page title.
+func waitForSearchData(page *rod.Page, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var last *searchPageProbe
+	for time.Now().Before(deadline) {
+		if err := page.GetContext().Err(); err != nil {
+			return fmt.Errorf("读取搜索页状态已中止: %w", err)
+		}
+		probe, err := readSearchPageProbe(page.Timeout(2 * time.Second))
+		if err == nil {
+			last = probe
+			if err := probe.accessError(); err != nil {
+				return err
+			}
+			if probe.HasSearchState && probe.FeedCount > 0 {
+				return nil
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if last == nil {
+		return fmt.Errorf("PAGE_STATUS_UNCONFIRMED: 无法读取搜索页状态；不可当作零条结果或确认登录有效")
+	}
+	return fmt.Errorf("PAGE_DATA_UNAVAILABLE: 搜索页数据未就绪（path=%s, readyState=%s, initialState=%t, searchState=%t, DOM笔记=%d）；未确认原因，未执行互动", last.PagePath, last.ReadyState, last.HasInitialState, last.HasSearchState, last.NoteItemCount)
+}
+
+// feedIDsJS 读当前结果集的 id 列表，用来判断数据有没有换一批。
+const feedIDsJS = `() => {
+	const f = window.__INITIAL_STATE__?.search?.feeds;
+	const v = f ? (f.value !== undefined ? f.value : f._value !== undefined ? f._value : f) : null;
+	return v ? v.map(x => x.id).join(",") : "";
+}`
+
+func readFeedIDs(page *rod.Page) string {
+	res, err := page.Eval(feedIDsJS)
+	if err != nil {
+		return ""
+	}
+	return res.Value.Str()
+}
+
+// waitFeedsChanged 等筛选后的数据到位。
+//
+// 点完筛选项之后不能立刻读结果：站点是先把 feeds 清空、再灌入新数据，
+// 中间这段时间读到的要么是空，要么还是筛选前那一批。原先用
+// MustWait(__INITIAL_STATE__ !== undefined) 等，而这个条件从首屏起就为真、
+// 立即返回，等于没等——多个筛选项一起用时表现为只有一部分生效。
+//
+// 未确认刷新时不能返回旧数据冒充已筛选结果。
+func waitFeedsChanged(page *rod.Page, before string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if probe, err := readSearchPageProbe(page.Timeout(2 * time.Second)); err == nil {
+			if err := probe.accessError(); err != nil {
+				return err
+			}
+		}
+		if now := readFeedIDs(page); now != "" && now != before {
+			return nil
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return fmt.Errorf("FILTER_RESULTS_UNCONFIRMED: 筛选后未在 %s 内确认结果刷新；不返回可能未筛选的旧数据", timeout)
+}
+
+// findFilterOption 在筛选面板里定位一个选项：按标签找到组，再在组内按文本找选项。
+//
+// 全程不用序号。同一个选项在面板里可能渲染成多个 div.tags（数量随视口而变，
+// 且首项是否重复各组不一致），下标对不齐；早前用 div.tags:nth-child(N) 会选错项。
+// 多份重复的位置尺寸完全相同，取第一个点下去落在同一处。
+//
+// 作用域必须限定在 div.filter-panel 内且只认 div.tags：页面别处存在同文本的
+// 可见元素（顶部频道栏的「图文」「视频」、标签「综合」），放宽会点错地方。
+func findFilterOption(page *rod.Page, pf pendingFilter) (*rod.Element, error) {
+	groups, err := page.Elements("div.filter-panel div.filters")
+	if err != nil {
+		return nil, fmt.Errorf("读取筛选面板失败: %w", err)
+	}
+
+	for _, group := range groups {
+		// 组标签是 div.filters 下的直接子 span
+		label, err := group.Element(":scope > span")
+		if err != nil {
+			continue
+		}
+		text, err := label.Text()
+		if err != nil || strings.TrimSpace(text) != pf.group {
+			continue
+		}
+
+		options, err := group.Elements("div.tags")
+		if err != nil {
+			return nil, fmt.Errorf("读取「%s」的选项失败: %w", pf.group, err)
+		}
+
+		var available []string
+		for _, opt := range options {
+			t, err := opt.Text()
+			if err != nil {
+				continue
+			}
+			t = strings.TrimSpace(t)
+			// The outer .tags wrapper keeps stale active classes after a click.
+			// Only its leaf .tags is the actual selectable option.
+			children, childErr := opt.Elements("div.tags")
+			if childErr != nil {
+				return nil, childErr
+			}
+			if len(children) > 0 {
+				continue
+			}
+			if t == pf.option {
+				return opt, nil
+			}
+			available = append(available, t)
+		}
+		return nil, fmt.Errorf("「%s」里没有选项「%s」，页面上是：%s",
+			pf.group, pf.option, strings.Join(available, "、"))
+	}
+
+	return nil, fmt.Errorf("筛选面板里没有「%s」这一组", pf.group)
+}
+
+func filterOptionSelected(option *rod.Element) (bool, error) {
+	res, err := option.Eval(`() => this.classList.contains('active')`)
+	if err != nil {
+		return false, fmt.Errorf("读取筛选选中状态失败: %w", err)
+	}
+	return res.Value.Bool(), nil
+}
+
+const filterSelectedJS = `(label, text) => {
+	const group = Array.from(document.querySelectorAll('div.filter-panel div.filters'))
+		.find(g => g.querySelector(':scope > span')?.textContent.trim() === label);
+	return !!group && Array.from(group.querySelectorAll('div.tags')).some(o =>
+		!o.querySelector('div.tags') && o.textContent.trim() === text && o.classList.contains('active'));
+}`
+
+const filterClickJS = `(label, text) => {
+	const group = Array.from(document.querySelectorAll('div.filter-panel div.filters'))
+		.find(g => g.querySelector(':scope > span')?.textContent.trim() === label);
+	const option = group && Array.from(group.querySelectorAll('div.tags')).find(o =>
+		!o.querySelector('div.tags') && o.textContent.trim() === text);
+	if (!option || !option.getClientRects().length || getComputedStyle(option).visibility === 'hidden') return false;
+	option.click();
+	return true;
+}`
+
+func makeSearchURL(keyword string) string {
+
+	values := url.Values{}
+	values.Set("keyword", keyword)
+	values.Set("source", "web_explore_feed")
+
+	//https://www.xiaohongshu.com/search_result?keyword=%25E7%258E%258B%25E5%25AD%2590&source=web_search_result_notes
+	//https://www.xiaohongshu.com/search_result?keyword=%25E7%258E%258B%25E5%25AD%2590&source=web_explore_feed
+	return fmt.Sprintf("https://www.xiaohongshu.com/search_result?%s", values.Encode())
+}

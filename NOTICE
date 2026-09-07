@@ -1,0 +1,22 @@
+xiaohongshu-mcp
+
+This distribution is derived from:
+https://github.com/xpzouying/xiaohongshu-mcp
+
+Copyright 2025 xpzouying
+Original work by xpzouying and the upstream authors.
+The original Apache License, Version 2.0 is included in LICENSE unchanged.
+
+Modified distribution maintained at:
+https://github.com/liaogx/xiaohongshu-mcp
+
+Changes include login-state and security-verification detection, search-filter
+selection and verification, atomic private cookie-file writes, a manual session
+recovery command, regression tests, updated module imports and documentation,
+an image download helper, and publication safeguards. Original authors are not responsible for these
+modifications. This distribution starts a new Git history; that does not imply
+original authorship of the upstream work.
+
+Public upstream demonstrations and community tutorials are referenced by link.
+No private runtime sessions, account material, or real interaction receipts are
+included. Third-party dependencies retain their respective licenses.
