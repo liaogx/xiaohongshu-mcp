@@ -11,10 +11,10 @@ MCP for 小红书 / xiaohongshu.com。让 AI 助手搜索笔记、获取推荐�
 - 改进登录失效与安全验证页面识别，避免将验证问题误判为普通搜索超时。
 - 搜索筛选按分组和实际选项定位，并核验选中状态。
 - 登录文件使用私有权限原子保存，增加人工扫码恢复工具。
-- 补充离线回归测试、发布前检查与运行数据排除规则。
+- 补充离线回归测试与运行数据排除规则。
 - 增加通用的[图片下载脚本与本地浏览索引](docs/DOWNLOAD_IMAGES.md)。
 
-以下功能演示和实战教程保留的是**上游公开示例链接**；本仓库不分发本机账号资料、登录二维码、私人素材或真实互动回执。不同版本的界面可能有差异。
+以下功能演示保留的是**上游公开示例链接**，不同版本的界面可能有差异。
 
 ## 项目简介
 
@@ -870,20 +870,6 @@ npx mcporter list xiaohongshu-mcp
 - 在 **非 Docker 环境** 下，请使用 **本机 IPv4 地址** 访问。
 
 ---
-
-## 3. 🌟 实战案例展示 (Community Showcases)
-
-> 💡 **强烈推荐查看**：这些都是社区贡献者的真实使用案例，包含详细的配置步骤和实战经验！
-
-### 📚 完整教程列表
-
-1. **[n8n 完整集成教程](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/n8n/README.md)** - 工作流自动化平台集成
-2. **[Cherry Studio 完整配置教程](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/cherrystudio/README.md)** - AI 客户端完美接入
-3. **[Claude Code + Kimi K2 接入教程](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/claude-code/claude-code-kimi-k2.md)** - Claude Code 门槛太高，那么就接入 Kimi 国产大模型吧～
-4. **[AnythingLLM 完整指南](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/anythingLLM/readme.md)** - AnythingLLM 是一款 all-in-one 多模态 AI 客户端，支持 workflow 定义，支持多种大模型和插件扩展。
-
-> 🎯 **提示**: 点击上方链接查看详细的图文教程，快速上手各种集成方案！
->
 
 ## 许可证
 

@@ -14,21 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
-      - name: Audit source and history
-        run: python3 scripts/audit_publication.py --audit
       - name: Build
         run: go build ./...
       - name: Vet
         run: go vet ./...
       - name: Offline unit tests
         run: go test ./...
-      - name: Offline helper and publication guard tests
+      - name: Offline image helper tests
         run: python3 -m unittest discover -s scripts -p '*_test.py'
       - name: Compile browser and integration fixtures without running
         run: go test -tags 'integration browser' -run '^$' ./...

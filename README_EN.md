@@ -11,10 +11,10 @@ This is an independently maintained, modified distribution of [xpzouying/xiaohon
 - More accurate detection of expired login sessions and security-verification pages.
 - Search-filter selection by group and leaf option, with verification of the selected state.
 - Atomic, private cookie-file saves and a manual session-recovery tool.
-- Offline regression fixtures, publication checks, and runtime-data exclusions.
+- Offline regression fixtures and runtime-data exclusions.
 - A generic [image download helper and local gallery index](docs/DOWNLOAD_IMAGES.md).
 
-Feature demos and community tutorials below link to **public upstream examples**. No local account data, login QR images, private media, or real interaction receipts are distributed with this repository. UI details may differ by version.
+Feature demos below link to **public upstream examples**. UI details may differ by version.
 
 ## Project Overview
 
@@ -870,20 +870,6 @@ If you do not specifically need OpenClaw, we strongly recommend switching to a c
 - In a **non-Docker environment**, please use your **local IPv4 address** to access.
 
 ---
-
-## 3. 🌟 Community Showcases
-
-> 💡 **Highly Recommended**: These are real-world use cases from community contributors, featuring detailed configuration steps and practical experiences!
-
-### 📚 Complete Tutorial List
-
-1. **[n8n Complete Integration Tutorial](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/n8n/README.md)** - Workflow automation platform integration
-2. **[Cherry Studio Complete Configuration Tutorial](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/cherrystudio/README.md)** - Perfect AI client integration
-3. **[Claude Code + Kimi K2 Integration Tutorial](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/claude-code/claude-code-kimi-k2.md)** - If Claude Code's barrier is too high, then integrate with Kimi domestic LLM!
-4. **[AnythingLLM Complete Guide](https://github.com/xpzouying/xiaohongshu-mcp/blob/main/examples/anythingLLM/readme.md)** - AnythingLLM is an all-in-one multimodal AI client that supports workflow definition, multiple LLMs, and plugin extensions.
-
-> 🎯 **Tip**: Click the links above to view detailed step-by-step tutorials for quick setup of various integration solutions!
->
 
 ## License
 

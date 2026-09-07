@@ -13,10 +13,10 @@ https://github.com/liaogx/xiaohongshu-mcp
 Changes include login-state and security-verification detection, search-filter
 selection and verification, atomic private cookie-file writes, a manual session
 recovery command, regression tests, updated module imports and documentation,
-an image download helper, and publication safeguards. Original authors are not responsible for these
+and an image download helper. Original authors are not responsible for these
 modifications. This distribution starts a new Git history; that does not imply
 original authorship of the upstream work.
 
-Public upstream demonstrations and community tutorials are referenced by link.
+Public upstream demonstrations are referenced by link.
 No private runtime sessions, account material, or real interaction receipts are
 included. Third-party dependencies retain their respective licenses.
