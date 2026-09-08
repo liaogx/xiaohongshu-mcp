@@ -245,6 +245,30 @@ type searchPageProbe struct {
 	Markers         []string `json:"markers"`
 }
 
+// PageAccessState 是给服务层使用的最小页面访问状态。
+//
+// 这里只暴露布尔状态，不返回页面正文、Cookie、令牌或二维码数据，避免
+// 为了处理人工验证而把敏感页面内容带出 xiaohongshu 包。
+type PageAccessState struct {
+	SecurityVerification bool
+	LoginVisible         bool
+	Authenticated        bool
+}
+
+// ProbePageAccess 读取当前页面是否处于人工安全验证、登录窗口或已登录状态。
+// 它用于在检测到安全验证后，把同一 MCP 会话交给用户手动完成验证。
+func ProbePageAccess(page *rod.Page) (*PageAccessState, error) {
+	probe, err := readSearchPageProbe(page)
+	if err != nil {
+		return nil, err
+	}
+	return &PageAccessState{
+		SecurityVerification: probe.SecurityPage,
+		LoginVisible:         probe.LoginVisible,
+		Authenticated:        probe.Authenticated,
+	}, nil
+}
+
 func readSearchPageProbe(page *rod.Page) (*searchPageProbe, error) {
 	result, err := page.Eval(`() => {
 		const body = (document.body && document.body.innerText) || "";

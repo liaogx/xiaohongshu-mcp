@@ -22,7 +22,8 @@ import (
 
 // XiaohongshuService 小红书业务服务
 type XiaohongshuService struct {
-	logins loginSessions
+	logins               loginSessions
+	securityVerification securityVerificationManager
 }
 
 // NewXiaohongshuService 创建小红书服务实例
@@ -115,6 +116,7 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 
 	isLoggedIn, err := loginAction.CheckLoginStatus(ctx)
 	if err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 
@@ -402,6 +404,7 @@ func (s *XiaohongshuService) SearchFeeds(ctx context.Context, keyword string, fi
 
 	feeds, err := action.Search(ctx, keyword, filters...)
 	if err != nil {
+		s.handleSecurityVerification(err, keyword)
 		return nil, err
 	}
 
@@ -430,6 +433,7 @@ func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID
 
 	result, err := action.GetFeedDetailWithConfig(ctx, feedID, xsecToken, loadAllComments, config)
 	if err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 
@@ -458,6 +462,7 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken,
 
 	result, err := action.UserProfile(ctx, userID, xsecToken, parsed)
 	if err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 	response := &UserProfileResponse{
@@ -481,6 +486,7 @@ func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsec
 	action := xiaohongshu.NewCommentFeedAction(page)
 
 	if err := action.PostComment(ctx, feedID, xsecToken, content); err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 
@@ -497,6 +503,7 @@ func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken str
 
 	action := xiaohongshu.NewLikeAction(page)
 	if err := action.Like(ctx, feedID, xsecToken); err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 	return &ActionResult{FeedID: feedID, Success: true, Message: "点赞成功或已点赞"}, nil
@@ -512,6 +519,7 @@ func (s *XiaohongshuService) UnlikeFeed(ctx context.Context, feedID, xsecToken s
 
 	action := xiaohongshu.NewLikeAction(page)
 	if err := action.Unlike(ctx, feedID, xsecToken); err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 	return &ActionResult{FeedID: feedID, Success: true, Message: "取消点赞成功或未点赞"}, nil
@@ -527,6 +535,7 @@ func (s *XiaohongshuService) FavoriteFeed(ctx context.Context, feedID, xsecToken
 
 	action := xiaohongshu.NewFavoriteAction(page)
 	if err := action.Favorite(ctx, feedID, xsecToken); err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 	return &ActionResult{FeedID: feedID, Success: true, Message: "收藏成功或已收藏"}, nil
@@ -542,6 +551,7 @@ func (s *XiaohongshuService) UnfavoriteFeed(ctx context.Context, feedID, xsecTok
 
 	action := xiaohongshu.NewFavoriteAction(page)
 	if err := action.Unfavorite(ctx, feedID, xsecToken); err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 	return &ActionResult{FeedID: feedID, Success: true, Message: "取消收藏成功或未收藏"}, nil
@@ -558,6 +568,7 @@ func (s *XiaohongshuService) ReplyCommentToFeed(ctx context.Context, feedID, xse
 	action := xiaohongshu.NewCommentFeedAction(page)
 
 	if err := action.ReplyToComment(ctx, feedID, xsecToken, commentID, userID, content); err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 
