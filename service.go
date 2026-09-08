@@ -24,6 +24,7 @@ import (
 type XiaohongshuService struct {
 	logins               loginSessions
 	securityVerification securityVerificationManager
+	interactionPages     interactionPageCache
 }
 
 // NewXiaohongshuService 创建小红书服务实例
@@ -477,11 +478,19 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken,
 
 // PostCommentToFeed 发表评论到Feed
 func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsecToken, content string) (*PostCommentResponse, error) {
+	s.interactionPages.mu.Lock()
+	defer s.interactionPages.mu.Unlock()
+	s.interactionPages.clear()
+	digest, digestErr := credentialDigest()
 	b := newBrowser()
-	defer b.Close()
-
 	page := b.NewPage()
-	defer page.Close()
+	retained := false
+	closePage := func() { _ = page.Close(); b.Close() }
+	defer func() {
+		if !retained {
+			closePage()
+		}
+	}()
 
 	action := xiaohongshu.NewCommentFeedAction(page)
 
@@ -489,12 +498,26 @@ func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsec
 		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
+	if digestErr == nil {
+		s.interactionPages.keep(feedID, page, closePage, digest)
+		retained = true
+	}
 
-	return &PostCommentResponse{FeedID: feedID, Success: true, Message: "评论发表成功"}, nil
+	return &PostCommentResponse{FeedID: feedID, CommentID: action.CommentID, Success: true, Message: "评论发表成功（平台业务回执已确认）"}, nil
 }
 
 // LikeFeed 点赞笔记
 func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
+	s.interactionPages.mu.Lock()
+	defer s.interactionPages.mu.Unlock()
+	if cached := s.interactionPages.take(feedID); cached != nil {
+		defer cached.close()
+		if err := xiaohongshu.NewLikeAction(cached.page).LikeOnCurrentPage(ctx, feedID); err != nil {
+			s.handleSecurityVerification(err, "")
+			return nil, err
+		}
+		return &ActionResult{FeedID: feedID, Success: true, Message: "点赞成功或已点赞（复用评论页面）"}, nil
+	}
 	b := newBrowser()
 	defer b.Close()
 

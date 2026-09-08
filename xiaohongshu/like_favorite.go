@@ -4,14 +4,11 @@ package xiaohongshu
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/go-rod/rod"
-	myerrors "github.com/liaogx/xiaohongshu-mcp/errors"
 	"github.com/liaogx/xiaohongshu-mcp/humanize"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -45,16 +42,11 @@ func newInteractAction(page *rod.Page) *interactAction {
 	return &interactAction{page: page}
 }
 
-func (a *interactAction) preparePage(ctx context.Context, actionType interactActionType, feedID, xsecToken string) *rod.Page {
-	page := a.page.Context(ctx).Timeout(60 * time.Second)
-	url := makeFeedDetailURL(feedID, xsecToken)
-	logrus.Infof("Opening feed detail page for %s: %s", actionType, url)
-
-	page.MustNavigate(url)
-	softWaitDOMStable(page, "点赞/收藏-详情页")
-	humanize.Delay(ctx, humanize.AfterNavigate)
-
-	return page
+func (a *interactAction) preparePage(ctx context.Context, actionType interactActionType, feedID, xsecToken string) (*rod.Page, error) {
+	if _, err := prepareNote(ctx, a.page, feedID, xsecToken, false, true); err != nil {
+		return nil, err
+	}
+	return a.page.Context(ctx), nil
 }
 
 func (a *interactAction) performClick(page *rod.Page, selector string) error {
@@ -68,26 +60,37 @@ func (a *interactAction) performClick(page *rod.Page, selector string) error {
 // stateOf 从交互状态里取目标字段（点赞取 liked，收藏取 collected）。
 type stateOf func(liked, collected bool) bool
 
-// toggleInteract 点击交互按钮并轮询校验状态是否变为 want；最多两次点击。
-// 到达即成功；始终未变或无法读状态则返回 error——消除"点了没报错就算成功"的假阳性。
+// toggleInteract clicks once. A stale snapshot must never cause a second
+// toggle, which could undo a successful like.
 func (a *interactAction) toggleInteract(ctx context.Context, page *rod.Page, feedID, selector string, want bool, actionType interactActionType, pick stateOf) error {
-	for attempt := 1; attempt <= 2; attempt++ {
-		if err := a.performClick(page, selector); err != nil {
-			return fmt.Errorf("%s点击失败: %w", actionType, err)
+	if actionType == actionLike || actionType == actionUnlike {
+		endpoint := "/note/like"
+		if !want {
+			endpoint = "/note/dislike"
 		}
-
-		ok, err := a.waitInteractState(page, feedID, want, pick, 4*time.Second)
-		if err != nil {
-			return fmt.Errorf("%s后无法确认状态: %w", actionType, err)
+		observer := observeSubmission(page, endpoint, feedID, "")
+		defer observer.close()
+		if observer.setupErr != nil {
+			return &InteractionError{Stage: "response_observer", State: "not_sent", Cause: observer.setupErr}
 		}
-		if ok {
-			humanize.Delay(ctx, humanize.AfterInteract)
-			logrus.Infof("feed %s %s成功（第%d次点击）", feedID, actionType, attempt)
-			return nil
+		if err := a.performClick(page.Timeout(12*time.Second), selector); err != nil {
+			return &InteractionError{Stage: "like_click", State: "unknown", Cause: err}
 		}
-		logrus.Warnf("feed %s %s第%d次点击后状态未变，重试", feedID, actionType, attempt)
+		r, err := awaitSubmission(page, observer, 15*time.Second)
+		logrus.WithFields(logrus.Fields{"feed_id": feedID, "state": r.State, "http_status": r.HTTPStatus, "code": r.Code, "request_field": r.RequestField}).Info("点赞业务回执检查")
+		return err
 	}
-	return fmt.Errorf("feed %s %s失败：点击后状态始终未变为预期", feedID, actionType)
+	if err := a.performClick(page.Timeout(12*time.Second), selector); err != nil {
+		return &InteractionError{Stage: "interact_click", State: "unknown", Cause: err}
+	}
+	ok, err := a.waitInteractState(page.Timeout(12*time.Second), feedID, want, pick, 10*time.Second)
+	if err != nil {
+		return &InteractionError{Stage: "interact_confirm", State: "unknown", Cause: err}
+	}
+	if !ok {
+		return &InteractionError{Stage: "interact_confirm", State: "unknown", Cause: fmt.Errorf("状态尚未确认，不再重复点击")}
+	}
+	return nil
 }
 
 // waitInteractState 轮询 __INITIAL_STATE__ 的交互状态，直到 pick()==want 或超时。
@@ -123,6 +126,18 @@ func (a *LikeAction) Like(ctx context.Context, feedID, xsecToken string) error {
 	return a.perform(ctx, feedID, xsecToken, true)
 }
 
+// LikeOnCurrentPage reuses the page whose comment was just confirmed.
+func (a *LikeAction) LikeOnCurrentPage(ctx context.Context, feedID string) error {
+	state, err := prepareNote(ctx, a.page, feedID, "", false, false)
+	if err != nil {
+		return err
+	}
+	if *state.Liked {
+		return nil
+	}
+	return a.toggleInteract(ctx, a.page.Context(ctx), feedID, SelectorLikeButton, true, actionLike, func(liked, collected bool) bool { return liked })
+}
+
 // Unlike 取消点赞指定笔记，如果未点赞则直接返回
 func (a *LikeAction) Unlike(ctx context.Context, feedID, xsecToken string) error {
 	return a.perform(ctx, feedID, xsecToken, false)
@@ -134,13 +149,14 @@ func (a *LikeAction) perform(ctx context.Context, feedID, xsecToken string, targ
 		actionType = actionUnlike
 	}
 
-	page := a.preparePage(ctx, actionType, feedID, xsecToken)
+	page, err := a.preparePage(ctx, actionType, feedID, xsecToken)
+	if err != nil {
+		return err
+	}
 
 	liked, _, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("failed to read interact state: %v (continue to try clicking)", err)
-		return a.toggleInteract(ctx, page, feedID, SelectorLikeButton, targetLiked, actionType,
-			func(liked, collected bool) bool { return liked })
+		return err
 	}
 
 	if targetLiked && liked {
@@ -181,13 +197,14 @@ func (a *FavoriteAction) perform(ctx context.Context, feedID, xsecToken string, 
 		actionType = actionUnfavorite
 	}
 
-	page := a.preparePage(ctx, actionType, feedID, xsecToken)
+	page, err := a.preparePage(ctx, actionType, feedID, xsecToken)
+	if err != nil {
+		return err
+	}
 
 	_, collected, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("failed to read interact state: %v (continue to try clicking)", err)
-		return a.toggleInteract(ctx, page, feedID, SelectorCollectButton, targetCollected, actionType,
-			func(liked, collected bool) bool { return collected })
+		return err
 	}
 
 	if targetCollected && collected {
@@ -203,36 +220,15 @@ func (a *FavoriteAction) perform(ctx context.Context, feedID, xsecToken string, 
 		func(liked, collected bool) bool { return collected })
 }
 
-// getInteractState 从 __INITIAL_STATE__ 读取笔记的点赞/收藏状态
-func (a *interactAction) getInteractState(page *rod.Page, feedID string) (liked bool, collected bool, err error) {
-
-	result := page.MustEval(`() => {
-		if (window.__INITIAL_STATE__ &&
-		    window.__INITIAL_STATE__.note &&
-		    window.__INITIAL_STATE__.note.noteDetailMap) {
-			return JSON.stringify(window.__INITIAL_STATE__.note.noteDetailMap);
-		}
-		return "";
-	}`).String()
-	if result == "" {
-		return false, false, myerrors.ErrNoFeedDetail
+// getInteractState requires explicit booleans on the matching note; missing
+// or stale data cannot be interpreted as "not yet liked".
+func (a *interactAction) getInteractState(page *rod.Page, feedID string) (bool, bool, error) {
+	state, err := readNoteReadiness(page, feedID)
+	if err != nil {
+		return false, false, err
 	}
-
-	var noteDetailMap map[string]struct {
-		Note struct {
-			InteractInfo struct {
-				Liked     bool `json:"liked"`
-				Collected bool `json:"collected"`
-			} `json:"interactInfo"`
-		} `json:"note"`
+	if state.NoteID != feedID || state.Liked == nil || state.Collected == nil {
+		return false, false, fmt.Errorf("目标笔记互动状态未确认，禁止盲点")
 	}
-	if err := json.Unmarshal([]byte(result), &noteDetailMap); err != nil {
-		return false, false, errors.Wrap(err, "unmarshal noteDetailMap failed")
-	}
-
-	detail, ok := noteDetailMap[feedID]
-	if !ok {
-		return false, false, fmt.Errorf("feed %s not in noteDetailMap", feedID)
-	}
-	return detail.Note.InteractInfo.Liked, detail.Note.InteractInfo.Collected, nil
+	return *state.Liked, *state.Collected, nil
 }

@@ -76,9 +76,10 @@ type PostCommentRequest struct {
 
 // PostCommentResponse 发表评论响应
 type PostCommentResponse struct {
-	FeedID  string `json:"feed_id"`
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	CommentID string `json:"comment_id,omitempty"`
+	FeedID    string `json:"feed_id"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
 }
 
 // ReplyCommentRequest 回复评论请求

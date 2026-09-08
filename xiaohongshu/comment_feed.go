@@ -14,7 +14,8 @@ import (
 
 // CommentFeedAction 表示 Feed 评论动作
 type CommentFeedAction struct {
-	page *rod.Page
+	page      *rod.Page
+	CommentID string
 }
 
 // NewCommentFeedAction 创建 Feed 评论动作
@@ -22,72 +23,22 @@ func NewCommentFeedAction(page *rod.Page) *CommentFeedAction {
 	return &CommentFeedAction{page: page}
 }
 
-// PostComment 发表评论到 Feed
-func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, content string) error {
-	// 不使用 Context(ctx)，避免继承外部 context 的超时
-	page := f.page.Timeout(60 * time.Second)
-
-	url := makeFeedDetailURL(feedID, xsecToken)
-	logrus.Infof("打开 feed 详情页: %s", url)
-
-	// 导航到详情页
-	page.MustNavigate(url)
-	// 真正的就绪条件是下面那句评论输入框的查找，不是整页 DOM 静止。
-	// 视频笔记的 DOM 永远静不下来，原先会在这里吃满 60s 再 panic，评论一条都发不出去。
-	softWaitDOMStable(page, "发布评论-详情页")
-	humanize.Delay(ctx, humanize.AfterNavigate)
-
-	// 检测页面是否可访问
-	if err := checkPageAccessible(page); err != nil {
+// PostComment submits once and confirms the correlated business response.
+func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, content string) (err error) {
+	started := time.Now()
+	defer func() {
+		entry := logrus.WithFields(logrus.Fields{"feed_id": feedID, "elapsed_ms": time.Since(started).Milliseconds()})
+		if err != nil {
+			entry.Warnf("评论操作停止: %v", err)
+		} else {
+			entry.Info("评论业务回执确认成功")
+		}
+	}()
+	draft, err := f.PrepareComment(ctx, feedID, xsecToken, content)
+	if err != nil {
 		return err
 	}
-
-	elem, err := page.Element("div.input-box div.content-edit span")
-	if err != nil {
-		logrus.Warnf("Failed to find comment input box: %v", err)
-		return fmt.Errorf("未找到评论输入框，该帖子可能不支持评论或网页端不可访问: %w", err)
-	}
-
-	if err := humanize.Click(elem); err != nil {
-		logrus.Warnf("Failed to click comment input box: %v", err)
-		return fmt.Errorf("无法点击评论输入框: %w", err)
-	}
-	humanize.Delay(ctx, humanize.AfterClick)
-
-	elem2, err := page.Element("div.input-box div.content-edit p.content-input")
-	if err != nil {
-		logrus.Warnf("Failed to find comment input field: %v", err)
-		return fmt.Errorf("未找到评论输入区域: %w", err)
-	}
-
-	if err := humanize.Type(ctx, elem2, content); err != nil {
-		logrus.Warnf("Failed to input comment content: %v", err)
-		return fmt.Errorf("无法输入评论内容: %w", err)
-	}
-
-	humanize.Delay(ctx, humanize.AfterType)
-
-	submitButton, err := page.Element("div.bottom button.submit")
-	if err != nil {
-		logrus.Warnf("Failed to find submit button: %v", err)
-		return fmt.Errorf("未找到提交按钮: %w", err)
-	}
-
-	if err := humanize.Click(submitButton); err != nil {
-		logrus.Warnf("Failed to click submit button: %v", err)
-		return fmt.Errorf("无法点击提交按钮: %w", err)
-	}
-
-	humanize.Delay(ctx, humanize.AfterClick)
-
-	// 就地校验：提交后评论应在评论区渲染出现；未出现则判定失败，避免假成功。
-	if !waitCommentRendered(page, content, 4*time.Second) {
-		logrus.Warnf("评论提交后未在评论区渲染，判定未成功: feed=%s", feedID)
-		return fmt.Errorf("评论未确认成功：提交后未在评论区出现（可能账号被限制或发送失败），feed: %s", feedID)
-	}
-
-	logrus.Infof("Comment posted and verified to feed: %s", feedID)
-	return nil
+	return draft.Submit(ctx)
 }
 
 // commentRendered 就地读当前页评论区 DOM，判断指定文本的评论是否已渲染出现。

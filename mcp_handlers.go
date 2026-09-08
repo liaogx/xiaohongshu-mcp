@@ -646,6 +646,9 @@ func (s *AppServer) handlePostComment(ctx context.Context, args map[string]inter
 	}
 
 	resultText := fmt.Sprintf("评论发表成功 - Feed ID: %s", result.FeedID)
+	if result.CommentID != "" {
+		resultText += " - Comment ID: " + result.CommentID
+	}
 	return &MCPToolResult{
 		Content: []MCPContent{{
 			Type: "text",
