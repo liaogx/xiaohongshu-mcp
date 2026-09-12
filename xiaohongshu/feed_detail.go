@@ -5,8 +5,10 @@ package xiaohongshu
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -107,7 +109,8 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	logrus.Infof("配置: 点击更多=%v, 回复阈值=%d, 最大评论数=%d, 滚动速度=%s",
 		config.ClickMoreReplies, config.MaxRepliesThreshold, config.MaxCommentItems, config.ScrollSpeed)
 
-	// 使用retry-go处理页面导航和DOM稳定等待
+	// 只对导航本身重试。页面访问门禁（登录/安全验证）不能重复导航，
+	// 否则一个需要人工处理的页面会被重试三次后才暴露真实原因。
 	err := retry.Do(
 		func() error {
 			// 用 Navigate 而不是 MustNavigate：后者失败是 panic，外面这层 retry.Do
@@ -115,6 +118,13 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 			// net::ERR_NAME_NOT_RESOLVED（容器 DNS 偶发）一次都没被重试过。
 			if e := page.Navigate(url); e != nil {
 				return e
+			}
+			// 尽早识别安全验证或登录页面。空白/尚未注水的普通详情页不
+			// 在这里判失败，留给下面的数据就绪等待处理。
+			if probe, e := readSearchPageProbe(page.Timeout(2 * time.Second)); e == nil {
+				if accessErr := probe.accessError(); accessErr != nil {
+					return accessErr
+				}
 			}
 			// 等的是数据就绪，不是页面静止。
 			//
@@ -135,6 +145,10 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		retry.Attempts(3),
 		retry.Delay(500*time.Millisecond),
 		retry.MaxJitter(1000*time.Millisecond),
+		retry.RetryIf(func(err error) bool {
+			var accessErr *PageAccessError
+			return !stderrors.As(err, &accessErr)
+		}),
 		retry.OnRetry(func(n uint, err error) {
 			logrus.Debugf("页面导航重试 #%d: %v", n, err)
 		}),
@@ -1033,5 +1047,14 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 }
 
 func makeFeedDetailURL(feedID, xsecToken string) string {
-	return fmt.Sprintf("https://www.xiaohongshu.com/explore/%s?xsec_token=%s&xsec_source=pc_feed", feedID, xsecToken)
+	// xsec_token returned by search_feeds is scoped to the search result page.
+	// Using pc_feed here makes the current web client redirect otherwise valid
+	// search results to /website-login/error. The web client also carries the
+	// originating page in `source`; encode all query values instead of placing
+	// the token into the URL verbatim.
+	values := url.Values{}
+	values.Set("xsec_token", xsecToken)
+	values.Set("xsec_source", "pc_search")
+	values.Set("source", "web_explore_feed")
+	return fmt.Sprintf("https://www.xiaohongshu.com/explore/%s?%s", feedID, values.Encode())
 }

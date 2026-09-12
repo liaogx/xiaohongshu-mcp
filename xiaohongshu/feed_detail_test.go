@@ -80,3 +80,11 @@ func TestCalculateMaxAttempts(t *testing.T) {
 	assert.Less(t, cl.calculateMaxAttempts(), defaultMaxAttempts,
 		"默认配置的滚动轮数应远小于无上限时的 %d", defaultMaxAttempts)
 }
+
+func TestMakeFeedDetailURLKeepsSearchOrigin(t *testing.T) {
+	got := makeFeedDetailURL("feed-1", "token-1")
+	assert.Contains(t, got, "xsec_source=pc_search")
+	assert.Contains(t, got, "source=web_explore_feed")
+	assert.Contains(t, got, "xsec_token=token-1")
+	assert.NotContains(t, got, "xsec_source=pc_feed")
+}

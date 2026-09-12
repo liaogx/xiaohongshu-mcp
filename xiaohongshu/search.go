@@ -279,7 +279,11 @@ func readSearchPageProbe(page *rod.Page) (*searchPageProbe, error) {
 		const value = unwrap(feeds);
 		const login = document.querySelector('.login-container');
 		const loginVisible = !!login && login.getClientRects().length > 0 && getComputedStyle(login).visibility !== 'hidden';
-		const securityPage = /\/website-login\/(captcha|verify)(\/|$)/.test(location.pathname)
+		// Detail requests can be redirected to /website-login/error when the
+		// account still looks authenticated but the platform requires a fresh
+		// verification. Treat that redirect as a security gate immediately; it
+		// must not be allowed to age into a generic data timeout.
+		const securityPage = /\/website-login\/(captcha|verify|error)(\/|$)/.test(location.pathname)
 			|| /安全验证|身份验证/.test(document.title)
 			|| (!state && /扫码验证身份|验证后继续/.test(body));
 		const markerTexts = [
