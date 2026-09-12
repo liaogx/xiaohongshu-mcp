@@ -434,7 +434,7 @@ func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID
 
 	result, err := action.GetFeedDetailWithConfig(ctx, feedID, xsecToken, loadAllComments, config)
 	if err != nil {
-		s.handleSecurityVerification(err, "")
+		s.handleSecurityVerificationTarget(err, xiaohongshu.FeedDetailURL(feedID, xsecToken), "", true)
 		return nil, err
 	}
 

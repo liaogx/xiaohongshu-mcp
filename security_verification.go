@@ -30,16 +30,25 @@ type securityVerificationManager struct {
 }
 
 type securityVerificationSession struct {
-	browser *headless_browser.Browser
-	page    *rod.Page
-	done    chan struct{}
-	cancel  context.CancelFunc
+	browser      *headless_browser.Browser
+	page         *rod.Page
+	done         chan struct{}
+	cancel       context.CancelFunc
+	targetDetail bool
+	keyword      string
 }
 
 func (s *XiaohongshuService) handleSecurityVerification(err error, keyword string) {
+	s.handleSecurityVerificationTarget(err, securityVerificationURL(keyword), keyword, false)
+}
+
+// handleSecurityVerificationTarget opens the exact page that hit the access
+// gate. For detail requests, merely seeing an authenticated Explore page is
+// not proof that the note can be read or interacted with.
+func (s *XiaohongshuService) handleSecurityVerificationTarget(err error, targetURL, keyword string, targetDetail bool) {
 	var accessErr *xiaohongshu.PageAccessError
 	if errors.As(err, &accessErr) && accessErr.Code == "SECURITY_VERIFICATION_REQUIRED" {
-		s.openSecurityVerification(keyword)
+		s.openSecurityVerification(targetURL, keyword, targetDetail)
 		return
 	}
 	// Keep the popup behavior for wrapped or translated errors returned by an
@@ -49,13 +58,13 @@ func (s *XiaohongshuService) handleSecurityVerification(err error, keyword strin
 		return
 	}
 
-	s.openSecurityVerification(keyword)
+	s.openSecurityVerification(targetURL, keyword, targetDetail)
 }
 
 // openSecurityVerification 在检测到安全验证时启动一个真正可见的浏览器窗口。
 // 该窗口仍然由 MCP 的浏览器工厂创建，因此会读取同一份 cookies、指纹和代理
 // 配置；不会打开用户日常 Chrome，也不会把账号资料复制到其他浏览器。
-func (s *XiaohongshuService) openSecurityVerification(keyword string) {
+func (s *XiaohongshuService) openSecurityVerification(targetURL, keyword string, targetDetail bool) {
 	s.securityVerification.mu.Lock()
 	if s.securityVerification.opening || s.securityVerification.session != nil {
 		s.securityVerification.mu.Unlock()
@@ -75,7 +84,10 @@ func (s *XiaohongshuService) openSecurityVerification(keyword string) {
 		b.Close()
 	}
 
-	if err := page.Timeout(60 * time.Second).Navigate(securityVerificationURL(keyword)); err != nil {
+	if targetURL == "" {
+		targetURL = securityVerificationURL(keyword)
+	}
+	if err := page.Timeout(60 * time.Second).Navigate(targetURL); err != nil {
 		closeBrowser()
 		s.securityVerification.mu.Lock()
 		s.securityVerification.opening = false
@@ -86,10 +98,12 @@ func (s *XiaohongshuService) openSecurityVerification(keyword string) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), securityVerificationTimeout)
 	session := &securityVerificationSession{
-		browser: b,
-		page:    page,
-		done:    make(chan struct{}),
-		cancel:  cancel,
+		browser:      b,
+		page:         page,
+		done:         make(chan struct{}),
+		cancel:       cancel,
+		targetDetail: targetDetail,
+		keyword:      keyword,
 	}
 
 	s.securityVerification.mu.Lock()
@@ -106,7 +120,7 @@ func (s *XiaohongshuService) openSecurityVerification(keyword string) {
 	s.securityVerification.mu.Unlock()
 
 	logrus.Warnf("已打开小红书安全验证窗口，请在该窗口中用小红书 App 完成人工验证；窗口最多保留 %s", securityVerificationTimeout)
-	go s.watchSecurityVerification(ctx, session, keyword)
+	go s.watchSecurityVerification(ctx, session)
 }
 
 func securityVerificationURL(keyword string) string {
@@ -120,7 +134,7 @@ func securityVerificationURL(keyword string) string {
 	return fmt.Sprintf("https://www.xiaohongshu.com/search_result?%s", values.Encode())
 }
 
-func (s *XiaohongshuService) watchSecurityVerification(ctx context.Context, session *securityVerificationSession, keyword string) {
+func (s *XiaohongshuService) watchSecurityVerification(ctx context.Context, session *securityVerificationSession) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	defer session.cancel()
@@ -139,10 +153,10 @@ func (s *XiaohongshuService) watchSecurityVerification(ctx context.Context, sess
 	for {
 		select {
 		case <-ctx.Done():
-			logrus.Warnf("小红书安全验证窗口结束，未确认验证完成（关键词=%q）", keyword)
+			logrus.Warnf("小红书安全验证窗口结束，未确认验证完成（关键词=%q）", session.keyword)
 			return
 		case <-ticker.C:
-			verified, err := securityVerificationCompleted(session.page)
+			verified, err := securityVerificationCompleted(session.page, session.targetDetail)
 			if err != nil {
 				// 页面在人工验证过程中可能短暂重载；只记录安全的状态错误，
 				// 保留窗口继续等待，不把它误报成验证成功。
@@ -157,13 +171,13 @@ func (s *XiaohongshuService) watchSecurityVerification(ctx context.Context, sess
 				logrus.Errorf("小红书安全验证已通过，但保存 cookies 失败: %v", err)
 				return
 			}
-			logrus.Infof("小红书安全验证已完成，MCP cookies 已保存（关键词=%q）", keyword)
+			logrus.Infof("小红书安全验证已完成，MCP cookies 已保存（关键词=%q）", session.keyword)
 			return
 		}
 	}
 }
 
-func securityVerificationCompleted(page *rod.Page) (bool, error) {
+func securityVerificationCompleted(page *rod.Page, targetDetail bool) (bool, error) {
 	state, err := xiaohongshu.ProbePageAccess(page.Timeout(3 * time.Second))
 	if err != nil {
 		return false, err
@@ -171,11 +185,14 @@ func securityVerificationCompleted(page *rod.Page) (bool, error) {
 	if state.SecurityVerification {
 		return false, nil
 	}
-	if state.Authenticated {
-		return true, nil
-	}
 	if state.LoginVisible {
 		return false, nil
+	}
+	if targetDetail {
+		return detailPageReady(page)
+	}
+	if state.Authenticated {
+		return true, nil
 	}
 
 	// 验证页面有时不会自动回到搜索页。验证页消失后，用同一个可见页面
@@ -187,4 +204,20 @@ func securityVerificationCompleted(page *rod.Page) (bool, error) {
 		return false, err
 	}
 	return loggedIn, nil
+}
+
+// detailPageReady is deliberately stricter than an authenticated user probe:
+// it requires the target page to leave the website-login route and hydrate
+// noteDetailMap. This prevents an already-valid cookie from being mistaken
+// for completion of a detail-page security challenge.
+func detailPageReady(page *rod.Page) (bool, error) {
+	result, err := page.Eval(`() => {
+		const map = window.__INITIAL_STATE__?.note?.noteDetailMap;
+		return /^\/explore\/[^/]+/.test(location.pathname)
+			&& !!map && Object.keys(map).length > 0;
+	}`)
+	if err != nil {
+		return false, err
+	}
+	return result.Value.Bool(), nil
 }

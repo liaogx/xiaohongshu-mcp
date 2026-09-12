@@ -1058,3 +1058,10 @@ func makeFeedDetailURL(feedID, xsecToken string) string {
 	values.Set("source", "web_explore_feed")
 	return fmt.Sprintf("https://www.xiaohongshu.com/explore/%s?%s", feedID, values.Encode())
 }
+
+// FeedDetailURL exposes the same URL builder to the service layer so a
+// security-verification window can open the exact detail request that failed.
+// The token is kept in memory and is never logged by the service layer.
+func FeedDetailURL(feedID, xsecToken string) string {
+	return makeFeedDetailURL(feedID, xsecToken)
+}
