@@ -176,16 +176,26 @@ func (a *CleanupAction) prepareDeleteComment(ctx context.Context, account string
 	if err = humanize.Click(menu); err != nil {
 		return err
 	}
-	dialog, err := p.Timeout(5*time.Second).ElementR(".reds-alert", `确认删除此评论`)
-	if err != nil {
-		return fmt.Errorf("PAGE_UNCONFIRMED: deletion confirmation missing")
-	}
-	out.button, err = dialog.ElementR("button", `^确定$`)
+	out.button, err = cleanupCommentConfirm(p)
 	out.endpoint = "/comment/delete"
 	out.match = func(body string) bool {
 		return cleanupRequestMatches(body, map[string]string{"noteId": t.FeedID, "commentId": t.CommentID})
 	}
 	return err
+}
+
+func cleanupCommentConfirm(p *rod.Page) (*rod.Element, error) {
+	dialog, err := p.Timeout(5*time.Second).ElementR(".reds-alert", `确认删除此评论`)
+	if err != nil {
+		return nil, fmt.Errorf("PAGE_UNCONFIRMED: deletion confirmation missing")
+	}
+	// The website renders this control as a div, not a <button>. Scope it
+	// to the verified deletion dialog and never click a generic “确定”.
+	button, err := dialog.ElementR(".reds-alert-footer .foot-btn.strong", `^确定$`)
+	if err != nil {
+		return nil, fmt.Errorf("PAGE_UNCONFIRMED: comment deletion confirm control unavailable")
+	}
+	return button, nil
 }
 
 func (a *CleanupAction) prepareDeleteNote(ctx context.Context, account string, out *PreparedCleanup) error {

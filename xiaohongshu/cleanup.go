@@ -431,17 +431,18 @@ func (a *CleanupAction) conversations(ctx context.Context, scope CleanupScope, l
 	if err := cleanupPageGuard(p); err != nil {
 		return nil, err
 	}
+	kind := "c2c"
+	if scope == CleanupGroups {
+		kind = "group"
+	}
 	// A mounted sidebar is only a loading shell. With no real rows and no
 	// verified empty-list signal, report unknown rather than zero sessions.
-	if err := p.Wait(rod.Eval(conversationRowsReadyJS)); err != nil {
+	// Group and direct-chat rows may arrive in separate asynchronous batches.
+	if err := p.Wait(rod.Eval(conversationRowsReadyJS, kind)); err != nil {
 		if gate := cleanupPageGuard(a.page.Context(ctx)); gate != nil {
 			return nil, gate
 		}
 		return nil, fmt.Errorf("PAGE_UNCONFIRMED: chat rows have not loaded; zero conversations is not confirmed")
-	}
-	kind := "c2c"
-	if scope == CleanupGroups {
-		kind = "group"
 	}
 	r, err := p.Eval(`kind=>[...document.querySelectorAll('.xhs-im-conv-item[data-conv-id]')].filter(e=>e.dataset.convKind===kind).map(e=>({conversation_id:e.dataset.convId}))`, kind)
 	if err != nil {
@@ -460,7 +461,7 @@ func (a *CleanupAction) conversations(ctx context.Context, scope CleanupScope, l
 	return items, nil
 }
 
-const conversationRowsReadyJS = `()=>document.querySelectorAll('.xhs-im-conv-item[data-conv-id]').length>0`
+const conversationRowsReadyJS = `kind=>[...document.querySelectorAll('.xhs-im-conv-item[data-conv-id]')].some(e=>e.dataset.convKind===kind)`
 
 type CleanupDiscovery struct {
 	AccountID string          `json:"account_id"`
