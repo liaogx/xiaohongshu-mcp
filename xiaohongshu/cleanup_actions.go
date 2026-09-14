@@ -38,6 +38,26 @@ func cleanupRequestMatches(body string, fields map[string]string) bool {
 	return true
 }
 
+// The web request adapter can serialize camelCase parameters as snake_case.
+// Bind both IDs, and reject contradictory aliases rather than accepting an
+// unrelated successful request merely because one pair of fields matches.
+func cleanupCommentRequestMatches(body, feedID, commentID string) bool {
+	var v map[string]any
+	if feedID == "" || commentID == "" || json.Unmarshal([]byte(body), &v) != nil {
+		return false
+	}
+	complete := false
+	for _, pair := range [][2]string{{"noteId", "commentId"}, {"note_id", "comment_id"}} {
+		note, hasNote := v[pair[0]]
+		comment, hasComment := v[pair[1]]
+		if hasNote && note != feedID || hasComment && comment != commentID {
+			return false
+		}
+		complete = complete || hasNote && hasComment
+	}
+	return complete
+}
+
 func (a *CleanupAction) Prepare(ctx context.Context, account string, t CleanupTarget) (*PreparedCleanup, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -179,7 +199,7 @@ func (a *CleanupAction) prepareDeleteComment(ctx context.Context, account string
 	out.button, err = cleanupCommentConfirm(p)
 	out.endpoint = "/comment/delete"
 	out.match = func(body string) bool {
-		return cleanupRequestMatches(body, map[string]string{"noteId": t.FeedID, "commentId": t.CommentID})
+		return cleanupCommentRequestMatches(body, t.FeedID, t.CommentID)
 	}
 	return err
 }

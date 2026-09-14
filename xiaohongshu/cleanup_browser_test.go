@@ -70,9 +70,14 @@ func TestCleanupBrowserFixtures(t *testing.T) {
 		require.True(t, r.Value.Bool())
 	})
 	for _, tc := range []struct {
-		name, body string
-		ok         bool
-	}{{"confirmed", `{"success":true,"code":0}`, true}, {"HTTP200 business rejection", `{"success":false,"code":-1}`, false}, {"unrecognized response", `{}`, false}} {
+		name, body, request string
+		ok                  bool
+	}{
+		{"confirmed camelCase", `{"success":true,"code":0}`, `{noteId:'fixture-note',commentId:'fixture-comment'}`, true},
+		{"confirmed snake_case", `{"success":true,"code":0}`, `{note_id:'fixture-note',comment_id:'fixture-comment'}`, true},
+		{"HTTP200 business rejection", `{"success":false,"code":-1}`, `{note_id:'fixture-note',comment_id:'fixture-comment'}`, false},
+		{"unrecognized response", `{}`, `{note_id:'fixture-note',comment_id:'fixture-comment'}`, false},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +88,7 @@ func TestCleanupBrowserFixtures(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				fmt.Fprint(w, `<button onclick="throw Error('unrelated confirmation')">确定</button><div class="reds-alert"><div class="reds-alert-title">确认删除此评论？</div><div class="reds-alert-footer"><div class="foot-btn strong" id="confirm" onclick="fetch('/comment/delete',{method:'POST',body:JSON.stringify({noteId:'fixture-note',commentId:'fixture-comment'})})">确定</div><div class="foot-btn">取消</div></div></div>`)
+				fmt.Fprintf(w, `<button onclick="throw Error('unrelated confirmation')">确定</button><div class="reds-alert"><div class="reds-alert-title">确认删除此评论？</div><div class="reds-alert-footer"><div class="foot-btn strong" id="confirm" onclick="fetch('/comment/delete',{method:'POST',body:JSON.stringify(%s)})">确定</div><div class="foot-btn">取消</div></div></div>`, tc.request)
 			}))
 			defer srv.Close()
 			p := b.NewPage()
@@ -93,7 +98,7 @@ func TestCleanupBrowserFixtures(t *testing.T) {
 			btn, err := cleanupCommentConfirm(p)
 			require.NoError(t, err)
 			prepared := PreparedCleanup{Target: CleanupTarget{Scope: CleanupSentComments, FeedID: "fixture-note", CommentID: "fixture-comment"}, page: p, button: btn, endpoint: "/comment/delete", match: func(body string) bool {
-				return cleanupRequestMatches(body, map[string]string{"noteId": "fixture-note", "commentId": "fixture-comment"})
+				return cleanupCommentRequestMatches(body, "fixture-note", "fixture-comment")
 			}}
 			require.Zero(t, calls.Load(), "prepare must not send")
 			err = prepared.Execute(context.Background())
@@ -114,7 +119,7 @@ func TestCleanupBrowserFixtures(t *testing.T) {
 		defer p.Close()
 		require.NoError(t, p.Navigate(srv.URL))
 		obs := observeSubmissionMatching(p, "/comment/delete", "fixture-note", "", func(body string) bool {
-			return cleanupRequestMatches(body, map[string]string{"noteId": "fixture-note", "commentId": "fixture-comment"})
+			return cleanupCommentRequestMatches(body, "fixture-note", "fixture-comment")
 		})
 		defer obs.close()
 		_, err := p.Eval(`()=>fetch('/comment/delete',{method:'POST',body:JSON.stringify({noteId:'fixture-note',commentId:'fixture-other'})}).then(()=>true)`)
