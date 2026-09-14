@@ -87,6 +87,17 @@ func TestCleanupBrowserFixtures(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, r.Value.Bool())
 	})
+	t.Run("moving deletion confirmation must settle before preparation finishes", func(t *testing.T) {
+		p := b.NewPage()
+		defer p.Close()
+		require.NoError(t, p.SetDocumentContent(`<div class="reds-alert"><div>确认删除此评论？</div><div class="reds-alert-footer"><div id="confirm" class="foot-btn strong" style="position:fixed;top:350px;left:100px;width:300px;height:40px" onclick="window.clicks++">确定</div></div></div><script>window.clicks=0;window.settled=false;document.querySelector('#confirm').animate([{transform:'translateY(-200px)'},{transform:'translateY(0px)'}],{duration:600,fill:'forwards'}).finished.then(()=>window.settled=true)</script>`))
+		_, err := cleanupCommentConfirm(p)
+		require.NoError(t, err)
+		r, err := p.Eval(`()=>({settled:window.settled,clicks:window.clicks})`)
+		require.NoError(t, err)
+		require.True(t, r.Value.Get("settled").Bool(), "a click point captured during dialog motion can miss after pointer movement")
+		require.Zero(t, r.Value.Get("clicks").Int(), "readiness checks must not dispatch deletion")
+	})
 	for _, tc := range []struct {
 		name, body, request string
 		ok                  bool

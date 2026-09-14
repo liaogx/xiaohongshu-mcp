@@ -218,6 +218,24 @@ func cleanupCommentConfirm(p *rod.Page) (*rod.Element, error) {
 	if err != nil {
 		return nil, fmt.Errorf("PAGE_UNCONFIRMED: comment deletion confirm control unavailable")
 	}
+	// The dialog can still be animating when the control becomes visible.
+	// Resolve its final position before pointer movement; a stale point can
+	// dismiss the dialog without sending a deletion request.
+	stable := button.Timeout(3 * time.Second)
+	err = stable.Wait(rod.Eval(`function(){
+		for(let node=this;node;node=node.parentElement){
+			for(const animation of node.getAnimations?.()||[]){
+				if(animation.pending||animation.playState==='running')return false;
+			}
+		}
+		return true;
+	}`))
+	if err == nil {
+		err = stable.WaitStable(200 * time.Millisecond)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("PAGE_UNCONFIRMED: comment deletion confirmation did not settle")
+	}
 	return button, nil
 }
 
