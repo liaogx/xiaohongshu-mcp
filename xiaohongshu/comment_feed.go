@@ -150,6 +150,9 @@ func (f *CommentFeedAction) ReplyToComment(ctx context.Context, feedID, xsecToke
 // findCommentElement 滚动查找指定评论：优先按 commentID 命中，否则按 userID 匹配。
 // 二级评论折叠在「展开 N 条回复」后面，未展开时不在 DOM 里，因此查找过程中要展开。
 func findCommentElement(ctx context.Context, page *rod.Page, commentID, userID string) (*rod.Element, error) {
+	if err := page.GetContext().Err(); err != nil {
+		return nil, err
+	}
 	logrus.Infof("开始查找评论 - commentID: %s, userID: %s", commentID, userID)
 
 	scrollToCommentsArea(page)
@@ -162,6 +165,12 @@ func findCommentElement(ctx context.Context, page *rod.Page, commentID, userID s
 
 	// attempt 只数下滚，展开不计入，由 deadline 收口。
 	for attempt := 0; attempt < maxSearchScrolls; {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := page.GetContext().Err(); err != nil {
+			return nil, err
+		}
 		if time.Now().After(deadline) {
 			logrus.Warnf("查找超过 %s，停止", maxSearchDuration)
 			return nil, fmt.Errorf("评论区过大，%s 内未找到目标评论 (commentID: %s, userID: %s)",
@@ -230,8 +239,10 @@ func findCommentElement(ctx context.Context, page *rod.Page, commentID, userID s
 // lookupComment 在当前已渲染的评论里查找目标，找不到返回 nil。
 func lookupComment(page *rod.Page, commentID, userID string) *rod.Element {
 	if commentID != "" {
-		if el, err := page.Timeout(2 * time.Second).Element(fmt.Sprintf("#comment-%s", commentID)); err == nil && el != nil {
-			return el
+		// The caller already polls after loading/scrolling. Waiting two seconds
+		// for every absent ID consumes the search budget without loading rows.
+		if els, err := page.Elements(fmt.Sprintf("#comment-%s", commentID)); err == nil && len(els) > 0 {
+			return els[0]
 		}
 	}
 

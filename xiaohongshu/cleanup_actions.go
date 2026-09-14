@@ -163,8 +163,11 @@ func (a *CleanupAction) prepareDeleteComment(ctx context.Context, account string
 	p, t := out.page, out.Target
 	// Exact comment IDs only. Author-name/text matching must not delete a
 	// different reply, even if several comments have identical content.
-	el, err := findCommentElement(ctx, p, t.CommentID, "")
+	el, err := findCleanupCommentElement(ctx, p, t.CommentID)
 	if err != nil {
+		if CleanupMustStop(err) || CleanupErrorCode(err) == "ACCOUNT_RESTRICTED" {
+			return err
+		}
 		return fmt.Errorf("TARGET_NOT_FOUND: 未找到指定评论；不等于已删除")
 	}
 	var proof struct {

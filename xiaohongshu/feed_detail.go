@@ -887,12 +887,13 @@ func checkEndContainer(page *rod.Page) bool {
 	err := retry.Do(
 		func() error {
 			// 使用 Go 查找结束容器
-			endEl, err := page.Timeout(2 * time.Second).Element(".end-container")
-			if err != nil {
+			endElements, err := page.Elements(".end-container")
+			if err != nil || len(endElements) == 0 {
 				// 未找到元素，说明未到底部
 				result = false
 				return nil
 			}
+			endEl := endElements[0]
 
 			// 获取文本内容
 			text, err := endEl.Text()
