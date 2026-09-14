@@ -53,6 +53,18 @@ func TestCleanupBrowserFixtures(t *testing.T) {
 		require.NoError(t, p.SetDocumentContent(`<div class="access-wrapper">访问频繁，请稍后再试 300013</div>`))
 		require.ErrorContains(t, cleanupPageGuard(p), "RATE_LIMITED")
 	})
+	t.Run("chat skeleton is not zero conversations", func(t *testing.T) {
+		p := b.NewPage()
+		defer p.Close()
+		require.NoError(t, p.SetDocumentContent(`<div class="xhs-im-conv-list__scroll"></div>`))
+		r, err := p.Eval(conversationRowsReadyJS)
+		require.NoError(t, err)
+		require.False(t, r.Value.Bool())
+		require.NoError(t, p.SetDocumentContent(`<div class="xhs-im-conv-item" data-conv-id="fixture-conversation"></div>`))
+		r, err = p.Eval(conversationRowsReadyJS)
+		require.NoError(t, err)
+		require.True(t, r.Value.Bool())
+	})
 	for _, tc := range []struct {
 		name, body string
 		ok         bool

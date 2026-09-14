@@ -252,7 +252,9 @@ func (a *CleanupAction) openProfile(ctx context.Context, account string) (*rod.P
 	if err := p.Navigate("https://www.xiaohongshu.com/user/profile/" + account); err != nil {
 		return nil, err
 	}
-	if err := p.Wait(rod.Eval(`() => !!document.querySelector('.user-interactions') || !!document.querySelector('.login-container') || /该账号疑似存在风险/.test(document.body.innerText)`)); err != nil {
+	// The profile header arrives before either tabs or an access error. Do
+	// not mistake that intermediate skeleton for an empty/missing list.
+	if err := p.Wait(rod.Eval(`() => !!document.querySelector('.reds-tab-item.sub-tab-list') || !!document.querySelector('.login-container')?.getClientRects().length || /该账号疑似存在风险|暂时无法查看笔记/.test(document.querySelector('.main-content')?.innerText||'') || /\/website-login\//.test(location.pathname)`)); err != nil {
 		return nil, fmt.Errorf("PAGE_UNCONFIRMED: profile did not load")
 	}
 	if err := cleanupPageGuard(p); err != nil {
@@ -429,6 +431,14 @@ func (a *CleanupAction) conversations(ctx context.Context, scope CleanupScope, l
 	if err := cleanupPageGuard(p); err != nil {
 		return nil, err
 	}
+	// A mounted sidebar is only a loading shell. With no real rows and no
+	// verified empty-list signal, report unknown rather than zero sessions.
+	if err := p.Wait(rod.Eval(conversationRowsReadyJS)); err != nil {
+		if gate := cleanupPageGuard(a.page.Context(ctx)); gate != nil {
+			return nil, gate
+		}
+		return nil, fmt.Errorf("PAGE_UNCONFIRMED: chat rows have not loaded; zero conversations is not confirmed")
+	}
 	kind := "c2c"
 	if scope == CleanupGroups {
 		kind = "group"
@@ -449,6 +459,8 @@ func (a *CleanupAction) conversations(ctx context.Context, scope CleanupScope, l
 	}
 	return items, nil
 }
+
+const conversationRowsReadyJS = `()=>document.querySelectorAll('.xhs-im-conv-item[data-conv-id]').length>0`
 
 type CleanupDiscovery struct {
 	AccountID string          `json:"account_id"`
