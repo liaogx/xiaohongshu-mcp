@@ -27,6 +27,9 @@ func TestCleanupResultNeverAssumesSuccessfulDeletion(t *testing.T) {
 	require.Equal(t, "rejected", CleanupResultState(&InteractionError{State: "rejected", Cause: fmt.Errorf("denied")}))
 	require.True(t, CleanupMustStop(fmt.Errorf("RATE_LIMITED")))
 	require.Equal(t, "ACCOUNT_RESTRICTED", CleanupErrorCode(fmt.Errorf("ACCOUNT_RESTRICTED: unavailable")))
+	require.Equal(t, "NOTE_NOT_READY", CleanupErrorCode(fmt.Errorf("INTERACTION_NOT_SENT: stage=ready; NOTE_NOT_READY")))
+	require.Equal(t, "NOTE_UNAVAILABLE", CleanupErrorCode(fmt.Errorf("NOTE_UNAVAILABLE: unavailable note")))
+	require.Equal(t, "AUTH_REQUIRED", CleanupErrorCode(fmt.Errorf("AUTH_REQUIRED; NOTE_NOT_READY")))
 }
 
 func TestCleanupCommentRequestAliases(t *testing.T) {
