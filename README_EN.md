@@ -8,6 +8,8 @@ This is an independently maintained, modified distribution of [xpzouying/xiaohon
 
 ### Changes in this distribution
 
+- [Account cleanup plans and receipts](docs/ACCOUNT_CLEANUP.md): verified note/comment deletion and removing likes, favorites and follows. Full history enumeration, group cleanup and direct-message deletion remain limited or require the mobile app; these are explicitly reported, not presented as completed operations.
+
 - More accurate detection of expired login sessions and security-verification pages.
 - Search-filter selection by group and leaf option, with verification of the selected state.
 - Atomic, private cookie-file saves and a manual session-recovery tool.

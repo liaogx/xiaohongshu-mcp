@@ -49,6 +49,8 @@ Token 缺失或无效时，接口返回 HTTP `401 Unauthorized`。命令行参�
 
 ## API 端点一览
 
+账号清理接口及能力边界见 [账号内容清理](ACCOUNT_CLEANUP.md)：`POST /api/v1/cleanup/prepare`、`POST /api/v1/cleanup/execute`、`GET /api/v1/cleanup/status`、`POST /api/v1/cleanup/comments/discover`。清理计划会报告未支持或无法完整读取的类别，外层 HTTP 成功不代表账号已清空。
+
 | 方法 | 端点 | 描述 |
 |------|------|------|
 | GET | `/health` | 健康检查 |

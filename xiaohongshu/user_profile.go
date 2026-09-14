@@ -64,6 +64,9 @@ func (u *UserProfileAction) UserProfile(ctx context.Context, userID, xsecToken s
 
 // extractUserProfileData 从页面中提取用户资料数据的通用方法
 func (u *UserProfileAction) extractUserProfileData(page *rod.Page, tab ProfileTab) (*UserProfileResponse, error) {
+	if err := checkProfileReadable(page); err != nil {
+		return nil, err
+	}
 	// 不能只等 __INITIAL_STATE__ 这个壳：壳在页面初始化时就有，userPageData 要等接口
 	// 回来才填。下面的提取是一次性的，拿到空值就直接报错，故这里等到真实数据落地。
 	softWaitData(page, `() => {
@@ -176,6 +179,9 @@ func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context, tab Prof
 
 // selectTab 切到目标子 tab。「笔记」是默认 tab，无需点击。
 func (u *UserProfileAction) selectTab(ctx context.Context, page *rod.Page, tab ProfileTab) error {
+	if err := checkProfileReadable(page); err != nil {
+		return err
+	}
 	if tab == "" || tab == TabNotes {
 		return nil
 	}
@@ -200,4 +206,18 @@ func (u *UserProfileAction) selectTab(ctx context.Context, page *rod.Page, tab P
 		return nil
 	}
 	return fmt.Errorf("未找到子 tab %q", label)
+}
+
+func checkProfileReadable(page *rod.Page) error {
+	r, err := page.Eval(`() => {
+	 const text=document.querySelector('.main-content')?.innerText||'';
+	 return /该账号疑似存在风险|暂时无法查看笔记/.test(text);
+	}`)
+	if err != nil {
+		return fmt.Errorf("PAGE_UNCONFIRMED: cannot inspect profile")
+	}
+	if r.Value.Bool() {
+		return fmt.Errorf("ACCOUNT_RESTRICTED: 个人主页被平台限制查看，不能将不可读列表视为空列表")
+	}
+	return nil
 }

@@ -179,6 +179,7 @@ func withPanicRecovery[T any](
 
 // registerTools 注册所有 MCP 工具
 func registerTools(server *mcp.Server, appServer *AppServer) {
+	registerCleanupTools(server, appServer)
 	// 工具 1: 检查登录状态
 	mcp.AddTool(server,
 		&mcp.Tool{

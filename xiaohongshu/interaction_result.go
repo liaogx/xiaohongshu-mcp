@@ -49,6 +49,14 @@ type submissionObserver struct {
 }
 
 func observeSubmission(page *rod.Page, endpoint, feedID, content string) *submissionObserver {
+	return observeSubmissionMatching(page, endpoint, feedID, content, func(body string) bool {
+		return matchesSubmission(body, feedID, content)
+	})
+}
+
+// match binds a cleanup response to the exact comment/user/note selected in
+// the UI; a successful unrelated request must never confirm a deletion.
+func observeSubmissionMatching(page *rod.Page, endpoint, feedID, content string, match func(string) bool) *submissionObserver {
 	ctx, cancel := context.WithCancel(page.GetContext())
 	p := page.Context(ctx)
 	o := &submissionObserver{cancel: cancel, done: make(chan struct{})}
@@ -85,7 +93,7 @@ func observeSubmission(page *rod.Page, endpoint, feedID, content string) *submis
 				}
 				body = r.PostData
 			}
-			if !matchesSubmission(body, feedID, content) {
+			if !match(body) {
 				return
 			}
 			requests[e.RequestID] = pendingResponse{field: submissionTargetField(body, feedID)}
@@ -195,7 +203,7 @@ func parseSubmissionResponse(status int, body []byte, feedID, content string) in
 		r.Code = code
 	}
 	msg := v.Msg + " " + v.Message
-	for _, label := range []string{"安全验证", "登录", "操作频繁", "评论过于频繁", "禁止评论", "评论已关闭", "内容违规"} {
+	for _, label := range []string{"安全验证", "登录", "访问频繁", "请求太频繁", "操作频繁", "评论过于频繁", "禁止评论", "评论已关闭", "内容违规"} {
 		if strings.Contains(msg, label) {
 			r.Reason = label
 			break

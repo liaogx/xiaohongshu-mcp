@@ -19,6 +19,9 @@
 go build -o bin/xiaohongshu-recover ./cmd/recover
 # 将占位路径替换为现有 MCP 服务使用的私有文件绝对路径。
 COOKIES_PATH=/absolute/private/cookies.json ./bin/xiaohongshu-recover -keyword '咖啡'
+
+# 在新的专用浏览器会话重新扫码，成功前不替换原登录文件。
+COOKIES_PATH=/absolute/private/cookies.json ./bin/xiaohongshu-recover -fresh
 ```
 
 Windows 使用 `.exe` 输出文件。恢复工具和 MCP 必须使用相同的 `COOKIES_PATH`，以及一致的代理和浏览器指纹配置；不要在运行时随意更换这些设置。先暂停正在执行的任务，避免并行写入会话。
@@ -26,6 +29,8 @@ Windows 使用 `.exe` 输出文件。恢复工具和 MCP 必须使用相同的 `
 在打开的窗口手动完成登录或安全验证。工具确认真实非游客账号和搜索页面状态后，才将会话原子保存到原登录文件；不会把失效或未确认的会话当作成功。超时或异常后，以工具提示和 MCP 重新检查为准。只出现二维码不代表已经登录。
 
 保存后重新调用 `check_login_status` 并做一次只读搜索。若仍有错误，不要重复发表评论或点赞；先核对状态。
+
+`-fresh` 仅核验新扫码会话并保存，不自动测试搜索。个人主页显示“账号疑似存在风险”属于内容访问受限，不能通过登录成功推断限制已解除；笔记管理、搜索和个人主页要分别核验。
 
 默认恢复关键词是通用示例，可通过 `-keyword` 更换。不要将个人搜索词、操作记录或真实会话写入项目源代码。
 

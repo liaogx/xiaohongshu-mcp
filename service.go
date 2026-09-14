@@ -25,6 +25,7 @@ type XiaohongshuService struct {
 	logins               loginSessions
 	securityVerification securityVerificationManager
 	interactionPages     interactionPageCache
+	cleanup              cleanupManager
 }
 
 // NewXiaohongshuService 创建小红书服务实例
