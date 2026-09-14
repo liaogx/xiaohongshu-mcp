@@ -95,6 +95,23 @@ func TestCleanupRejectsExtraScopesAndMalformedTargets(t *testing.T) {
 	require.ErrorContains(t, err, "TARGET_SCOPE_MISMATCH")
 }
 
+func TestCleanupRejectsQueuedReceiptOverridesWithoutBrowser(t *testing.T) {
+	t.Setenv("XHS_CLEANUP_STATE_DIR", t.TempDir())
+	target := xiaohongshu.CleanupTarget{Scope: xiaohongshu.CleanupSentComments, FeedID: "fixture-note", CommentID: "fixture-comment"}
+	p := &cleanupPlan{Version: 1, ID: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", AccountID: "fixture-account", Entries: []cleanupEntry{{Target: target, State: "not_sent", Code: "TARGET_NOT_FOUND"}}}
+	path, err := planPath(p.ID)
+	require.NoError(t, err)
+	require.NoError(t, writeCleanupJSON(path, p))
+	s := NewXiaohongshuService()
+	for _, state := range []string{"pending", "", "unrecognized"} {
+		require.NoError(t, writeCleanupJSON(accountCleanupPath(p.AccountID), cleanupAccountState{Receipts: map[string]cleanupReceipt{cleanupKey(target): {State: state, At: time.Now()}}}))
+		_, err := s.ExecuteAccountCleanup(context.Background(), CleanupExecuteArgs{PlanID: p.ID, Confirm: true})
+		require.ErrorContains(t, err, "CLEANUP_STATE_UNREADABLE")
+		_, err = s.GetAccountCleanupStatus(p.ID)
+		require.ErrorContains(t, err, "CLEANUP_STATE_UNREADABLE")
+	}
+}
+
 func TestCleanupLockAndCanonicalCommentKey(t *testing.T) {
 	t.Setenv("XHS_CLEANUP_STATE_DIR", t.TempDir())
 	unlock, err := lockCleanupState()

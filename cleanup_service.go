@@ -345,6 +345,15 @@ func loadAccountCleanupState(account string) (*cleanupAccountState, error) {
 	if v.Receipts == nil {
 		return nil, fmt.Errorf("CLEANUP_STATE_UNREADABLE")
 	}
+	for _, receipt := range v.Receipts {
+		switch receipt.State {
+		case "confirmed", "already_clear", "not_sent", "unknown", "rejected", "manual_required":
+		default:
+			// Receipts are outcomes, never instructions to queue an action.
+			// A pending override would resurrect a later failed preparation.
+			return nil, fmt.Errorf("CLEANUP_STATE_UNREADABLE: invalid receipt outcome")
+		}
+	}
 	return v, nil
 }
 
