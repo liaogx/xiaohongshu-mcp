@@ -51,11 +51,40 @@ func TestCleanupReplayProtectionWithoutBrowser(t *testing.T) {
 		require.Equal(t, "blocked", r.Status)
 		require.Equal(t, state, r.Entries[0].State)
 	}
-	ledger := cleanupAccountState{NextAllowedAt: time.Now().Add(time.Minute), Receipts: map[string]cleanupReceipt{}}
-	require.NoError(t, writeCleanupJSON(accountCleanupPath(p.AccountID), ledger))
-	r, err := s.ExecuteAccountCleanup(context.Background(), CleanupExecuteArgs{PlanID: p.ID, Confirm: true})
+}
+
+func TestCleanupIgnoresLegacyCooldownWithoutBrowser(t *testing.T) {
+	t.Setenv("XHS_CLEANUP_STATE_DIR", t.TempDir())
+	target := xiaohongshu.CleanupTarget{Scope: xiaohongshu.CleanupLikes, FeedID: "fixture-note"}
+	p := &cleanupPlan{Version: 1, ID: "dddddddddddddddddddddddddddddddd", AccountID: "fixture-account", Coverage: []xiaohongshu.CleanupCoverage{{Scope: xiaohongshu.CleanupLikes, Complete: true}}, Entries: []cleanupEntry{{Target: target, State: "pending"}}}
+	path, err := planPath(p.ID)
 	require.NoError(t, err)
-	require.Equal(t, "waiting_interval", r.Status)
+	require.NoError(t, writeCleanupJSON(path, p))
+	// An old ledger may retain a future deadline. Ignore that field while
+	// retaining its confirmed receipt, so no browser or duplicate action starts.
+	legacy := map[string]any{
+		"next_allowed_at": time.Now().Add(time.Hour),
+		"receipts":        map[string]cleanupReceipt{cleanupKey(target): {State: "confirmed", At: time.Now()}},
+	}
+	require.NoError(t, writeCleanupJSON(accountCleanupPath(p.AccountID), legacy))
+	s := NewXiaohongshuService()
+	status, err := s.GetAccountCleanupStatus(p.ID)
+	require.NoError(t, err)
+	result, err := s.ExecuteAccountCleanup(context.Background(), CleanupExecuteArgs{PlanID: p.ID, Confirm: true})
+	require.NoError(t, err)
+	for _, report := range []*CleanupReport{status, result} {
+		require.Equal(t, "finished", report.Status)
+		require.Equal(t, "confirmed", report.Entries[0].State)
+		raw, err := json.Marshal(report)
+		require.NoError(t, err)
+		require.NotContains(t, string(raw), "next_allowed_at")
+	}
+	ledger, err := loadAccountCleanupState(p.AccountID)
+	require.NoError(t, err)
+	raw, err := json.Marshal(ledger)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "next_allowed_at")
+	require.Equal(t, "confirmed", ledger.Receipts[cleanupKey(target)].State)
 }
 
 func TestCleanupRejectsExtraScopesAndMalformedTargets(t *testing.T) {

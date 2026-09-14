@@ -18,8 +18,6 @@ import (
 	"github.com/liaogx/xiaohongshu-mcp/xiaohongshu"
 )
 
-const cleanupInterval = time.Minute
-
 var cleanupPlanID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type cleanupManager struct{ mu sync.Mutex }
@@ -32,7 +30,7 @@ type CleanupPrepareArgs struct {
 
 type CleanupExecuteArgs struct {
 	PlanID  string `json:"plan_id" jsonschema:"prepare_account_cleanup 返回的计划 ID"`
-	Confirm bool   `json:"confirm" jsonschema:"明确授权后传 true。每次最多执行一个目标，实际变更至少间隔60秒；不确定结果不重发"`
+	Confirm bool   `json:"confirm" jsonschema:"明确授权后传 true。每次最多执行一个目标，结果明确后可继续下一项，无固定本地等待；验证、限流或不确定结果时停止"`
 }
 
 type CleanupStatusArgs struct {
@@ -64,8 +62,7 @@ type cleanupPlan struct {
 }
 
 type cleanupAccountState struct {
-	NextAllowedAt time.Time                 `json:"next_allowed_at"`
-	Receipts      map[string]cleanupReceipt `json:"receipts"`
+	Receipts map[string]cleanupReceipt `json:"receipts"`
 }
 
 type cleanupReceipt struct {
@@ -76,13 +73,12 @@ type cleanupReceipt struct {
 
 // Reports contain IDs and outcomes, never access tokens or private chat text.
 type CleanupReport struct {
-	PlanID        string                        `json:"plan_id"`
-	AccountID     string                        `json:"account_id"`
-	Status        string                        `json:"status"`
-	Coverage      []xiaohongshu.CleanupCoverage `json:"coverage"`
-	Entries       []CleanupReportEntry          `json:"entries"`
-	NextAllowedAt *time.Time                    `json:"next_allowed_at,omitempty"`
-	ErrorCode     string                        `json:"error_code,omitempty"`
+	PlanID    string                        `json:"plan_id"`
+	AccountID string                        `json:"account_id"`
+	Status    string                        `json:"status"`
+	Coverage  []xiaohongshu.CleanupCoverage `json:"coverage"`
+	Entries   []CleanupReportEntry          `json:"entries"`
+	ErrorCode string                        `json:"error_code,omitempty"`
 }
 type CleanupReportEntry struct {
 	Scope xiaohongshu.CleanupScope `json:"scope"`
@@ -334,11 +330,7 @@ func (s *XiaohongshuService) GetAccountCleanupStatus(id string) (*CleanupReport,
 			p.Entries[i].Code = r.Code
 		}
 	}
-	out := reportCleanup(p)
-	if time.Now().Before(state.NextAllowedAt) {
-		out.NextAllowedAt = &state.NextAllowedAt
-	}
-	return out, nil
+	return reportCleanup(p), nil
 }
 
 func loadAccountCleanupState(account string) (*cleanupAccountState, error) {
@@ -403,11 +395,6 @@ func (s *XiaohongshuService) ExecuteAccountCleanup(ctx context.Context, args Cle
 			return out, nil
 		}
 	}
-	if time.Now().Before(ledger.NextAllowedAt) {
-		out.Status = "waiting_interval"
-		out.NextAllowedAt = &ledger.NextAllowedAt
-		return out, nil
-	}
 	index := -1
 	for i, e := range p.Entries {
 		if e.State == "pending" {
@@ -448,7 +435,6 @@ func (s *XiaohongshuService) ExecuteAccountCleanup(ctx context.Context, args Cle
 		// This durable marker is written before the first destructive click.
 		// Unknown/rejected operations are never automatically replayed by a new plan.
 		ledger.Receipts[key] = cleanupReceipt{State: "unknown", At: time.Now()}
-		ledger.NextAllowedAt = time.Now().Add(cleanupInterval)
 		if err = writeCleanupJSON(accountCleanupPath(p.AccountID), ledger); err != nil {
 			return nil, err
 		}
@@ -468,9 +454,6 @@ func (s *XiaohongshuService) ExecuteAccountCleanup(ctx context.Context, args Cle
 		return nil, saveErr
 	}
 	out = reportCleanup(p)
-	if time.Now().Before(ledger.NextAllowedAt) {
-		out.NextAllowedAt = &ledger.NextAllowedAt
-	}
 	if err != nil {
 		out.Status = "blocked"
 		out.ErrorCode = entry.Code

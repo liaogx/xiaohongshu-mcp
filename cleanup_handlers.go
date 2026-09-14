@@ -26,7 +26,7 @@ func registerCleanupTools(server *mcp.Server, app *AppServer) {
 			v, err := app.xiaohongshuService.PrepareAccountCleanup(ctx, args)
 			return cleanupMCPResult(v, err)
 		}))
-	mcp.AddTool(server, &mcp.Tool{Name: "execute_account_cleanup", Description: "执行已明确授权的清理计划，必须传 plan_id 和 confirm:true；每次一个目标，变更至少间隔60秒。支持已核实的笔记删除、评论删除、取消收藏/赞/关注；当前网页不支持群聊或私信清理。无法确认的结果不自动重试。", Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(true)}},
+	mcp.AddTool(server, &mcp.Tool{Name: "execute_account_cleanup", Description: "执行已明确授权的清理计划，必须传 plan_id 和 confirm:true；每次一个目标，结果明确后可继续下一项，无固定本地等待。支持已核实的笔记删除、评论删除、取消收藏/赞/关注；当前网页不支持群聊或私信清理。遇到验证、平台限流或无法确认的结果时停止，不自动重试。", Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(true)}},
 		withPanicRecovery("execute_account_cleanup", func(ctx context.Context, _ *mcp.CallToolRequest, args CleanupExecuteArgs) (*mcp.CallToolResult, any, error) {
 			v, err := app.xiaohongshuService.ExecuteAccountCleanup(ctx, args)
 			return cleanupMCPResult(v, err)
