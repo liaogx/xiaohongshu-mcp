@@ -65,12 +65,19 @@ func (a *CleanupAction) Prepare(ctx context.Context, account string, t CleanupTa
 	if t.Scope == CleanupGroups || t.Scope == CleanupMessages {
 		return nil, fmt.Errorf("MANUAL_REQUIRED: 当前网页无已验证的清空/删除/退出聊天入口")
 	}
-	id, err := a.account(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if account == "" || id != account {
+	if account == "" {
 		return nil, fmt.Errorf("ACCOUNT_MISMATCH: 当前账号与清理计划不一致")
+	}
+	// Note scopes verify the authenticated account on the exact target page
+	// below. Opening explore first adds a second, unrelated readiness failure.
+	if t.Scope == CleanupNotes || t.Scope == CleanupFollowing {
+		id, err := a.account(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if id != account {
+			return nil, fmt.Errorf("ACCOUNT_MISMATCH: 当前账号与清理计划不一致")
+		}
 	}
 	p := a.page.Context(ctx).Timeout(100 * time.Second)
 	out := &PreparedCleanup{Target: t, page: p}
@@ -114,7 +121,7 @@ func (a *CleanupAction) Prepare(ctx context.Context, account string, t CleanupTa
 			return cleanupRequestMatches(body, map[string]string{"targetUserId": t.UserID})
 		}
 	case CleanupFavorites, CleanupLikes, CleanupSentComments, CleanupReceivedComments:
-		state, err := prepareNote(ctx, p, t.FeedID, t.XsecToken, false, true)
+		state, err := prepareNote(ctx, p, t.FeedID, t.XsecToken, false, true, true)
 		if err != nil {
 			return nil, err
 		}

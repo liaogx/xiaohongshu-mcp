@@ -40,7 +40,8 @@ func readNoteReadiness(page *rod.Page, feedID string) (*NoteReadiness, error) {
 	return &v, nil
 }
 
-func waitNoteReady(page *rod.Page, feedID string, needsInput bool, timeout time.Duration) (*NoteReadiness, error) {
+func waitNoteReady(page *rod.Page, feedID string, needsInput bool, timeout time.Duration, requireUser ...bool) (*NoteReadiness, error) {
+	loginRequired := len(requireUser) > 0 && requireUser[0]
 	ctx, cancel := context.WithTimeout(page.GetContext(), timeout)
 	defer cancel()
 	p := page.Context(ctx)
@@ -56,12 +57,15 @@ func waitNoteReady(page *rod.Page, feedID string, needsInput bool, timeout time.
 			if state.Blocked {
 				return nil, fmt.Errorf("NOTE_UNAVAILABLE: 页面明确显示笔记不可访问，未执行互动")
 			}
-			if state.NoteID == feedID && state.Liked != nil && state.Collected != nil && (!needsInput || state.InputVisible && state.UserID != "") {
+			if state.NoteID == feedID && state.Liked != nil && state.Collected != nil && (!needsInput || state.InputVisible && state.UserID != "") && (!loginRequired || state.UserID != "") {
 				return state, nil
 			}
 		}
 		select {
 		case <-ctx.Done():
+			if loginRequired && last != nil && last.NoteID == feedID && last.UserID == "" {
+				return nil, fmt.Errorf("LOGIN_STATUS_UNCONFIRMED: 目标笔记页未确认登录账号，未发送: %w", ctx.Err())
+			}
 			return nil, fmt.Errorf("NOTE_NOT_READY: 目标笔记数据/操作区域未就绪（目标数据=%t, 账号=%t, 输入区域=%t），未发送: %w", last != nil && last.NoteID == feedID, last != nil && last.UserID != "", last != nil && last.InputVisible, ctx.Err())
 		case <-time.After(200 * time.Millisecond):
 		}
@@ -69,7 +73,7 @@ func waitNoteReady(page *rod.Page, feedID string, needsInput bool, timeout time.
 }
 
 // Navigate at most once and wait for the target note, not global DOM stability.
-func prepareNote(ctx context.Context, page *rod.Page, feedID, token string, needsInput, navigate bool) (*NoteReadiness, error) {
+func prepareNote(ctx context.Context, page *rod.Page, feedID, token string, needsInput, navigate bool, requireUser ...bool) (*NoteReadiness, error) {
 	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
 	p := page.Context(ctx)
@@ -78,7 +82,7 @@ func prepareNote(ctx context.Context, page *rod.Page, feedID, token string, need
 			return nil, &InteractionError{Stage: "navigate", State: "not_sent", Cause: err}
 		}
 	}
-	state, err := waitNoteReady(p, feedID, needsInput, 25*time.Second)
+	state, err := waitNoteReady(p, feedID, needsInput, 25*time.Second, requireUser...)
 	if err != nil {
 		return nil, &InteractionError{Stage: "ready", State: "not_sent", Cause: err}
 	}
