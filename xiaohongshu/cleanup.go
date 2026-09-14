@@ -97,7 +97,10 @@ type CleanupInventory struct {
 	Targets   []CleanupTarget   `json:"-"`
 }
 
-type CleanupAction struct{ page *rod.Page }
+type CleanupAction struct {
+	page                 *rod.Page
+	notificationSnapshot *notificationPayload
+}
 
 func NewCleanupAction(page *rod.Page) *CleanupAction { return &CleanupAction{page: page} }
 
@@ -185,6 +188,7 @@ func (a *CleanupAction) Inventory(ctx context.Context, scopes []CleanupScope, ma
 		return nil, err
 	}
 	out := &CleanupInventory{AccountID: account, Coverage: []CleanupCoverage{}, Targets: []CleanupTarget{}}
+	a.notificationSnapshot = nil
 	if maxItems <= 0 || maxItems > 1000 {
 		maxItems = 200
 	}
@@ -206,11 +210,13 @@ func (a *CleanupAction) Inventory(ctx context.Context, scopes []CleanupScope, ma
 				cov.Reason = "仅覆盖网页收藏标签可读笔记；未验证所有收藏夹的覆盖情况，不能声称全部取消收藏"
 			}
 		case CleanupSentComments:
-			cov.Status = "manual_required"
-			cov.Reason = "网页没有账号全部已发评论列表；可通过 discover_cleanup_comments 按已知笔记查找，覆盖范围不能视为全部历史"
+			targets, err = a.notificationCommentTargets(ctx, account, scope, maxItems)
+			cov.Status = "partial"
+			cov.Reason = "直接从网页“评论和@”读取被回复的本账号原评论，不扫描本地运营历史；无回复或通知已清除的评论可能遗漏，不能声称账号全部已发评论"
 		case CleanupReceivedComments:
-			cov.Status = "manual_required"
-			cov.Reason = "可删除自有笔记下的评论；其他笔记收到的回复不属于本账号，网页通知页没有已验证的删除通知入口"
+			targets, err = a.notificationCommentTargets(ctx, account, scope, maxItems)
+			cov.Status = "partial"
+			cov.Reason = "直接从通知页面读取自有笔记收到的评论候选；别人在其他笔记的原评论不属于本账号，通知条目本身的删除仍无已验证网页入口"
 		case CleanupFollowing:
 			cov.Count, err = a.followingCount(ctx, account)
 			cov.Status = "manual_required"

@@ -65,17 +65,26 @@ type NotificationUser struct {
 // FeedID / FeedXsecToken 取自笔记信息，与 get_feed_detail、reply_comment_in_feed
 // 所需的参数一致，调用方可以直接拿去读原帖或走笔记页回复。
 type NotificationItem struct {
-	ID            string           `json:"id"`
-	Type          string           `json:"type"`
-	Title         string           `json:"title"`
-	Time          int64            `json:"time"`
-	From          NotificationUser `json:"from"`
-	CommentID     string           `json:"comment_id,omitempty"`
-	CommentText   string           `json:"comment_text,omitempty"`
-	Liked         bool             `json:"liked"`
-	FeedID        string           `json:"feed_id,omitempty"`
-	FeedXsecToken string           `json:"feed_xsec_token,omitempty"`
-	FeedTitle     string           `json:"feed_title,omitempty"`
+	ID            string                     `json:"id"`
+	Type          string                     `json:"type"`
+	Title         string                     `json:"title"`
+	Time          int64                      `json:"time"`
+	From          NotificationUser           `json:"from"`
+	CommentID     string                     `json:"comment_id,omitempty"`
+	CommentText   string                     `json:"comment_text,omitempty"`
+	Liked         bool                       `json:"liked"`
+	FeedID        string                     `json:"feed_id,omitempty"`
+	FeedXsecToken string                     `json:"feed_xsec_token,omitempty"`
+	FeedTitle     string                     `json:"feed_title,omitempty"`
+	TargetComment *NotificationQuotedComment `json:"target_comment,omitempty"`
+}
+
+// TargetComment is the original comment being replied to, not the new reply.
+// Consumers must verify its author before treating it as their own comment.
+type NotificationQuotedComment struct {
+	ID      string           `json:"id"`
+	Content string           `json:"content"`
+	Author  NotificationUser `json:"author"`
 }
 
 // NotificationList 一个分区的通知列表。
@@ -262,10 +271,12 @@ type (
 	}
 
 	rawComment struct {
-		ID      string     `json:"id"`
-		Content string     `json:"content"`
-		Liked   bool       `json:"liked"`
-		Illegal rawIllegal `json:"illegalInfo"`
+		ID            string      `json:"id"`
+		Content       string      `json:"content"`
+		Liked         bool        `json:"liked"`
+		Illegal       rawIllegal  `json:"illegalInfo"`
+		UserInfo      rawUser     `json:"userInfo"`
+		TargetComment *rawComment `json:"targetComment,omitempty"`
 	}
 
 	rawItem struct {
@@ -274,6 +285,7 @@ type (
 		Content   string     `json:"content"`
 		XsecToken string     `json:"xsecToken"`
 		Illegal   rawIllegal `json:"illegalInfo"`
+		UserInfo  rawUser    `json:"userInfo"`
 	}
 )
 
@@ -351,6 +363,9 @@ func convertNotifications(raw []rawNotification, limit int) ([]NotificationItem,
 			CommentText: r.Comment.Content,
 			Liked:       r.Comment.Liked,
 			FeedTitle:   r.Item.Content,
+		}
+		if target := r.Comment.TargetComment; target != nil && target.ID != "" && target.Illegal.Status == statusNormal {
+			item.TargetComment = &NotificationQuotedComment{ID: target.ID, Content: target.Content, Author: NotificationUser{UserID: target.UserInfo.UserID, Nickname: target.UserInfo.Nickname}}
 		}
 		if r.Item.Type == itemTypeNote {
 			item.FeedID = r.Item.ID
