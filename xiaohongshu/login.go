@@ -27,7 +27,7 @@ func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
 	}
 	// A sidebar element can exist in a guest page. Require a non-guest account
 	// in page state; distinguish a security challenge from an expired login.
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(25 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := pp.GetContext().Err(); err != nil {
 			return false, errors.Wrap(err, "check login status interrupted")
@@ -88,47 +88,53 @@ func (a *LoginAction) CurrentUser(ctx context.Context) (*CurrentUser, error) {
 }
 
 func (a *LoginAction) Login(ctx context.Context) error {
-	pp := a.page.Context(ctx)
-
-	// 导航到小红书首页，这会触发二维码弹窗
-	pp.MustNavigate("https://www.xiaohongshu.com/explore")
-	// 注意 pp 只做了 Context(ctx) 没设 Timeout，裸 MustWaitLoad 在此处没有任何上限。
-	softWaitLoad(pp, "登录-explore 页")
-
-	time.Sleep(2 * time.Second)
-
-	if exists, _, _ := pp.Has(".main-container .user .link-wrapper .channel"); exists {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	_, loggedIn, err := a.FetchQrcodeImage(ctx)
+	if err != nil {
+		return err
+	}
+	if loggedIn || a.WaitForLogin(ctx) {
 		return nil
 	}
-
-	pp.MustElement(".main-container .user .link-wrapper .channel")
-
-	return nil
+	return errors.Wrap(ctx.Err(), "LOGIN_STATUS_UNCONFIRMED: login was not confirmed")
 }
 
 func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
 	pp := a.page.Context(ctx)
-
-	// 导航到小红书首页，这会触发二维码弹窗
-	pp.MustNavigate("https://www.xiaohongshu.com/explore")
-	// 注意 pp 只做了 Context(ctx) 没设 Timeout，裸 MustWaitLoad 在此处没有任何上限。
-	softWaitLoad(pp, "登录-explore 页")
-
-	time.Sleep(2 * time.Second)
-
-	if exists, _, _ := pp.Has(".main-container .user .link-wrapper .channel"); exists {
-		return "", true, nil
+	if err := pp.Navigate("https://www.xiaohongshu.com/explore"); err != nil {
+		return "", false, errors.Wrap(err, "LOGIN_QRCODE_UNCONFIRMED: open login page failed")
 	}
+	return waitLoginQrcode(ctx, pp)
+}
 
-	src, err := pp.MustElement(".login-container .qrcode-img").Attribute("src")
-	if err != nil {
-		return "", false, errors.Wrap(err, "get qrcode src failed")
+// A slow page may become authenticated without ever rendering a QR image.
+// Recheck both outcomes on every poll; a sidebar alone is not login evidence.
+func waitLoginQrcode(ctx context.Context, page *rod.Page) (string, bool, error) {
+	pp := page.Context(ctx)
+	for {
+		if probe, err := readSearchPageProbe(pp.Timeout(2 * time.Second)); err == nil {
+			if probe.SecurityPage {
+				return "", false, probe.accessError()
+			}
+			if probe.Authenticated && !probe.LoginVisible {
+				return "", true, nil
+			}
+			if probe.LoginVisible {
+				result, err := pp.Timeout(time.Second).Eval(`()=>[...document.querySelectorAll('.login-container .qrcode-img')].filter(e=>e.getClientRects().length && getComputedStyle(e).visibility!=='hidden').map(e=>e.getAttribute('src')).find(Boolean)||''`)
+				if err == nil && result.Value.Str() != "" {
+					return result.Value.Str(), false, nil
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return "", false, errors.Wrap(ctx.Err(), "LOGIN_QRCODE_UNCONFIRMED: neither authenticated account nor visible QR became ready")
+		case <-time.After(250 * time.Millisecond):
+		}
 	}
-	if src == nil || len(*src) == 0 {
-		return "", false, errors.New("qrcode src is empty")
-	}
-
-	return *src, false, nil
 }
 
 func (a *LoginAction) WaitForLogin(ctx context.Context) bool {
@@ -141,8 +147,8 @@ func (a *LoginAction) WaitForLogin(ctx context.Context) bool {
 		case <-ctx.Done():
 			return false
 		case <-ticker.C:
-			el, err := pp.Element(".main-container .user .link-wrapper .channel")
-			if err == nil && el != nil {
+			probe, err := readSearchPageProbe(pp.Timeout(2 * time.Second))
+			if err == nil && probe.Authenticated && !probe.SecurityPage && !probe.LoginVisible {
 				return true
 			}
 		}

@@ -30,6 +30,9 @@ func TestCleanupResultNeverAssumesSuccessfulDeletion(t *testing.T) {
 	require.Equal(t, "NOTE_NOT_READY", CleanupErrorCode(fmt.Errorf("INTERACTION_NOT_SENT: stage=ready; NOTE_NOT_READY")))
 	require.Equal(t, "NOTE_UNAVAILABLE", CleanupErrorCode(fmt.Errorf("NOTE_UNAVAILABLE: unavailable note")))
 	require.Equal(t, "AUTH_REQUIRED", CleanupErrorCode(fmt.Errorf("AUTH_REQUIRED; NOTE_NOT_READY")))
+	require.Equal(t, "LOGIN_STATUS_UNCONFIRMED", CleanupErrorCode(fmt.Errorf("LOGIN_STATUS_UNCONFIRMED: account data missing")))
+	require.True(t, CleanupMustStop(cleanupLoginStatusError(fmt.Errorf("current user not found in page state"))))
+	require.Equal(t, "RATE_LIMITED", CleanupErrorCode(cleanupLoginStatusError(fmt.Errorf("RATE_LIMITED: unavailable"))))
 }
 
 func TestCleanupCommentRequestAliases(t *testing.T) {

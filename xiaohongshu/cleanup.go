@@ -147,7 +147,7 @@ func CleanupErrorCode(err error) string {
 	if err == nil {
 		return ""
 	}
-	for _, c := range []string{"SECURITY_VERIFICATION_REQUIRED", "RATE_LIMITED", "AUTH_REQUIRED", "ACCOUNT_RESTRICTED", "ACCOUNT_MISMATCH", "NOTE_UNAVAILABLE", "NOTE_NOT_READY", "MANUAL_REQUIRED", "TARGET_NOT_FOUND", "NOT_AUTHORIZED", "PAGE_UNCONFIRMED"} {
+	for _, c := range []string{"SECURITY_VERIFICATION_REQUIRED", "RATE_LIMITED", "AUTH_REQUIRED", "ACCOUNT_RESTRICTED", "ACCOUNT_MISMATCH", "LOGIN_STATUS_UNCONFIRMED", "NOTE_UNAVAILABLE", "NOTE_NOT_READY", "MANUAL_REQUIRED", "TARGET_NOT_FOUND", "NOT_AUTHORIZED", "PAGE_UNCONFIRMED"} {
 		if strings.Contains(err.Error(), c) {
 			return c
 		}
@@ -160,24 +160,31 @@ func CleanupErrorCode(err error) string {
 
 func CleanupMustStop(err error) bool {
 	switch CleanupErrorCode(err) {
-	case "SECURITY_VERIFICATION_REQUIRED", "RATE_LIMITED", "AUTH_REQUIRED", "ACCOUNT_MISMATCH":
+	case "SECURITY_VERIFICATION_REQUIRED", "RATE_LIMITED", "AUTH_REQUIRED", "ACCOUNT_MISMATCH", "LOGIN_STATUS_UNCONFIRMED":
 		return true
 	}
 	return false
+}
+
+func cleanupLoginStatusError(err error) error {
+	if CleanupMustStop(err) || CleanupErrorCode(err) == "ACCOUNT_RESTRICTED" {
+		return err
+	}
+	return fmt.Errorf("LOGIN_STATUS_UNCONFIRMED: account check failed: %w", err)
 }
 
 func (a *CleanupAction) account(ctx context.Context) (string, error) {
 	login := NewLogin(a.page)
 	ok, err := login.CheckLoginStatus(ctx)
 	if err != nil {
-		return "", err
+		return "", cleanupLoginStatusError(err)
 	}
 	if !ok {
 		return "", fmt.Errorf("AUTH_REQUIRED: 请先在 MCP 登录")
 	}
 	u, err := login.CurrentUser(ctx)
 	if err != nil {
-		return "", err
+		return "", cleanupLoginStatusError(err)
 	}
 	return u.UserID, nil
 }

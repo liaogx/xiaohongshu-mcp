@@ -397,7 +397,7 @@ func (s *XiaohongshuService) ExecuteAccountCleanup(ctx context.Context, args Cle
 		}
 	}
 	for _, e := range p.Entries {
-		if e.State == "not_sent" && (e.Code == "SECURITY_VERIFICATION_REQUIRED" || e.Code == "RATE_LIMITED" || e.Code == "AUTH_REQUIRED" || e.Code == "ACCOUNT_MISMATCH") {
+		if e.State == "not_sent" && xiaohongshu.CleanupMustStop(fmt.Errorf("%s", e.Code)) {
 			out.Status = "blocked"
 			out.ErrorCode = e.Code
 			return out, nil

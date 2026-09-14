@@ -156,6 +156,7 @@ func (s *XiaohongshuService) GetLoginQrcode(ctx context.Context) (*LoginQrcodeRe
 		defer deferFunc()
 	}
 	if err != nil {
+		s.handleSecurityVerification(err, "")
 		return nil, err
 	}
 

@@ -81,3 +81,19 @@ func TestCleanupLockAndCanonicalCommentKey(t *testing.T) {
 	target.Scope = xiaohongshu.CleanupReceivedComments
 	require.Equal(t, key, cleanupKey(target), "one comment deletion cannot replay under another scope")
 }
+
+func TestCleanupUnconfirmedLoginBlocksNextTarget(t *testing.T) {
+	t.Setenv("XHS_CLEANUP_STATE_DIR", t.TempDir())
+	p := &cleanupPlan{Version: 1, ID: "cccccccccccccccccccccccccccccccc", AccountID: "fixture-account", Entries: []cleanupEntry{
+		{Target: xiaohongshu.CleanupTarget{Scope: xiaohongshu.CleanupLikes, FeedID: "fixture-first"}, State: "not_sent", Code: "LOGIN_STATUS_UNCONFIRMED"},
+		{Target: xiaohongshu.CleanupTarget{Scope: xiaohongshu.CleanupLikes, FeedID: "fixture-next"}, State: "pending"},
+	}}
+	path, err := planPath(p.ID)
+	require.NoError(t, err)
+	require.NoError(t, writeCleanupJSON(path, p))
+	r, err := NewXiaohongshuService().ExecuteAccountCleanup(context.Background(), CleanupExecuteArgs{PlanID: p.ID, Confirm: true})
+	require.NoError(t, err)
+	require.Equal(t, "blocked", r.Status)
+	require.Equal(t, "LOGIN_STATUS_UNCONFIRMED", r.ErrorCode)
+	require.Equal(t, "pending", r.Entries[1].State)
+}
