@@ -2,6 +2,8 @@
 
 中文 | [English](README_EN.md) · [Apache-2.0](LICENSE)
 
+**稳定版 v1.0.0：**[下载主程序、登录与恢复工具](https://github.com/liaogx/xiaohongshu-mcp/releases/tag/v1.0.0) · [发行说明与快速启动](docs/releases/v1.0.0.md)。支持 macOS Apple Silicon、Windows x64、Linux x64，下载版无需安装 Go。
+
 MCP for 小红书 / Xiaohongshu / RedNote。兼容 `www.xiaohongshu.com` 和 `www.rednote.com`，让 AI 助手搜索笔记、获取推荐和详情、查看公开主页，并执行用户授权的发布和互动操作。
 
 本仓库基于 [xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) 修改，是独立维护的衍生版本。Git 历史重新初始化，但保留上游许可证与来源声明，详见 [NOTICE](NOTICE)。本项目与小红书官方无隶属关系。
@@ -257,7 +259,11 @@ https://github.com/user-attachments/assets/cc385b6c-422c-489b-a5fc-63e92c695b80
 
 ## 1. 使用教程
 
-### 1.1. 从本仓库源码编译（推荐）
+### 1.1. 获取程序
+
+**直接下载（推荐）：**进入[本仓库 Releases](https://github.com/liaogx/xiaohongshu-mcp/releases)，选择系统对应的 `xiaohongshu-mcp` 和 `xiaohongshu-login`；`xiaohongshu-recover` 是可选的人工恢复工具。使用文件名带平台后缀的程序，启动示例和 SHA256 校验方式见[发行说明](docs/releases/v1.0.0.md)。`Source code` 附件是源码，不是可直接运行的程序。
+
+**从源码编译：**下文的 `./bin/` 路径示例适用于这种方式。
 
 安装 [Go](https://go.dev/doc/install) 1.24 或更新版本以及 Git。要使用本仓库的修改，请编译**本仓库源码**；上游发布的二进制和 Docker 镜像不会自动包含这些修复。
 
@@ -273,6 +279,8 @@ go build -o bin/xiaohongshu-recover ./cmd/recover
 内置浏览器支持 macOS Apple Silicon、Windows x64、Linux x64。Windows 编译时请为输出文件增加 `.exe` 后缀；macOS Intel、Linux ARM64 暂无对应内置浏览器。首次启动会下载并校验浏览器，后续复用缓存。
 
 国内网络如有需要，可为编译命令设置 `GOPROXY=https://goproxy.cn,direct`。
+
+各工具支持 `-version`，输出版本、提交、构建时间与平台，不打开浏览器。MCP 连接信息和 `/health` 的版本号与主程序一致；MCP 协议日期是另一项信息。开发者构建多平台发行附件的方法见[发行构建说明](docs/RELEASING.md)。
 
 **Docker 部署：**在本仓库根目录执行 `docker compose -f docker/docker-compose.yml up -d --build`，从当前源码构建。详见 [Docker 指南](docker/README.md)和 [Windows 指南](docs/windows_guide.md)。
 

@@ -13,14 +13,22 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/liaogx/xiaohongshu-mcp/browser"
 	"github.com/liaogx/xiaohongshu-mcp/cookies"
+	"github.com/liaogx/xiaohongshu-mcp/pkg/buildinfo"
 	"github.com/liaogx/xiaohongshu-mcp/xiaohongshu"
 	"github.com/sirupsen/logrus"
 )
 
+var version = buildinfo.DefaultVersion
+
 func main() {
+	showVersion := flag.Bool("version", false, "显示版本和构建信息，不打开验证窗口")
 	keyword := flag.String("keyword", "咖啡", "用于检查搜索页可用性的关键词")
 	fresh := flag.Bool("fresh", false, "在新的专用浏览器会话中重新扫码；成功前保留原登录文件")
 	flag.Parse()
+	if *showVersion {
+		fmt.Print(buildinfo.Summary("xiaohongshu-recover", version))
+		return
+	}
 	if err := xiaohongshu.ValidateSiteConfig(); err != nil {
 		fmt.Println(err)
 		return

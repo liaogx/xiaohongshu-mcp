@@ -4,17 +4,19 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/liaogx/xiaohongshu-mcp/browser"
 	"github.com/liaogx/xiaohongshu-mcp/configs"
 	"github.com/liaogx/xiaohongshu-mcp/cookies"
+	"github.com/liaogx/xiaohongshu-mcp/pkg/buildinfo"
 	"github.com/liaogx/xiaohongshu-mcp/xiaohongshu"
 	"github.com/sirupsen/logrus"
 )
 
-// version 构建版本号，发布时通过 -ldflags "-X main.version=vX.Y.Z" 注入。
-var version = "dev"
+// version is also used by /health and MCP serverInfo; releases stamp all three.
+var version = buildinfo.DefaultVersion
 
 func main() {
 	var (
@@ -22,10 +24,15 @@ func main() {
 		port     string
 		token    string
 	)
+	showVersion := flag.Bool("version", false, "显示版本和构建信息，不启动浏览器或服务")
 	flag.BoolVar(&headless, "headless", true, "是否无头模式")
 	flag.StringVar(&port, "port", ":18060", "端口")
 	flag.StringVar(&token, "token", "", "鉴权 Token，留空则读取 AUTH_TOKEN")
 	flag.Parse()
+	if *showVersion {
+		fmt.Print(buildinfo.Summary("xiaohongshu-mcp", version))
+		return
+	}
 	if err := xiaohongshu.ValidateSiteConfig(); err != nil {
 		logrus.Fatal(err)
 	}

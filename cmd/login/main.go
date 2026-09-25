@@ -5,17 +5,26 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 
 	"github.com/go-rod/rod"
 	"github.com/liaogx/xiaohongshu-mcp/browser"
 	"github.com/liaogx/xiaohongshu-mcp/configs"
 	"github.com/liaogx/xiaohongshu-mcp/cookies"
+	"github.com/liaogx/xiaohongshu-mcp/pkg/buildinfo"
 	"github.com/liaogx/xiaohongshu-mcp/xiaohongshu"
 	"github.com/sirupsen/logrus"
 )
 
+var version = buildinfo.DefaultVersion
+
 func main() {
+	showVersion := flag.Bool("version", false, "显示版本和构建信息，不打开登录窗口")
 	flag.Parse()
+	if *showVersion {
+		fmt.Print(buildinfo.Summary("xiaohongshu-login", version))
+		return
+	}
 	if err := xiaohongshu.ValidateSiteConfig(); err != nil {
 		logrus.Fatal(err)
 	}

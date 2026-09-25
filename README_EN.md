@@ -2,6 +2,8 @@
 
 [中文](README.md) | English · [Apache-2.0](LICENSE)
 
+**Stable release v1.0.0:** [Download binaries](https://github.com/liaogx/xiaohongshu-mcp/releases/tag/v1.0.0) · [Release notes and quick start](docs/releases/v1.0.0.md). macOS Apple Silicon, Windows x64 and Linux x64 builds are available; running a downloaded executable does not require Go.
+
 MCP for Xiaohongshu and RedNote (`www.xiaohongshu.com` and `www.rednote.com`): search notes, retrieve recommendations and details, inspect public profiles, and perform user-authorized publishing and interactions.
 
 This is an independently maintained, modified distribution of [xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp). It has fresh Git history, but retains the upstream license and attribution; see [NOTICE](NOTICE). It is not affiliated with Xiaohongshu.
@@ -258,7 +260,11 @@ Login sessions, QR codes, downloaded media, logs, and interaction receipts are p
 
 ## 1. Usage Tutorial
 
-### 1.1. Build this version from source
+### 1.1. Get this version
+
+**Download (recommended):** choose the `xiaohongshu-mcp` server and `xiaohongshu-login` tool for your system from [this repository's Releases](https://github.com/liaogx/xiaohongshu-mcp/releases). The `xiaohongshu-recover` tool is optional. See the [release instructions](docs/releases/v1.0.0.md) for platform-specific filenames, startup commands and SHA256 verification. GitHub's `Source code` archives do not contain ready-to-run programs.
+
+**Build from source:** the `./bin/` examples below refer to this option.
 
 Install [Go](https://go.dev/doc/install) 1.24 or later and Git. Build from **this repository** to include its fixes; upstream binaries and container images do not automatically contain these changes.
 
@@ -274,6 +280,8 @@ go build -o bin/xiaohongshu-recover ./cmd/recover
 The bundled browser supports macOS Apple Silicon, Windows x64, and Linux x64. Windows executables should use `.exe` output names. macOS Intel and Linux ARM64 are not currently supported by the browser distribution. The first launch downloads and verifies the browser; later launches reuse the cache.
 
 Optional module proxy: set `GOPROXY=https://goproxy.cn,direct` for the build if required by your network.
+
+All three tools support `-version` without opening a browser. The server reports the same build version through MCP server information and `/health`; the MCP protocol date is separate. See [release builds](docs/RELEASING.md) for the multi-platform packaging script.
 
 **Docker:** build this checkout with `docker compose -f docker/docker-compose.yml up -d --build`. See the [Docker guide](docker/README.md) and [Windows guide](docs/windows_guide.md).
 
