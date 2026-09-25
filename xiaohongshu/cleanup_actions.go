@@ -90,7 +90,7 @@ func (a *CleanupAction) Prepare(ctx context.Context, account string, t CleanupTa
 		if t.UserID == account {
 			return nil, fmt.Errorf("INVALID_TARGET: cannot unfollow self")
 		}
-		if err := p.Navigate(makeUserProfileURL(t.UserID, t.XsecToken, TabNotes)); err != nil {
+		if err := p.Navigate(pageSite(p).Profile(t.UserID, t.XsecToken, string(TabNotes))); err != nil {
 			return nil, err
 		}
 		if err := p.Wait(rod.Eval(`()=>!!document.querySelector('.user-info')`)); err != nil {
@@ -199,7 +199,9 @@ func (a *CleanupAction) prepareDeleteComment(ctx context.Context, account string
 	if err = humanize.Click(more); err != nil {
 		return err
 	}
-	menu, err := p.Timeout(5*time.Second).ElementR(".menu-wrapper .menu-item", `^删除评论$`)
+	// Several comment menus can stay mounted at once. A hidden parent menu
+	// must not capture the action intended for a visible nested reply menu.
+	menu, err := p.Timeout(5 * time.Second).ElementByJS(rod.Eval(commentDeleteMenuJS))
 	if err != nil {
 		return fmt.Errorf("NOT_AUTHORIZED: 页面未提供删除此评论入口")
 	}
@@ -214,6 +216,14 @@ func (a *CleanupAction) prepareDeleteComment(ctx context.Context, account string
 	return err
 }
 
+const commentDeleteMenuJS = `() => {
+	// The open menu starts with an opacity transition. Pick its laid-out row,
+	// not a display:none parent menu; normal pointer interaction finishes opening.
+	return [...document.querySelectorAll('.menu-wrapper .menu-item')].find(e=>
+		!e.closest('[aria-hidden="true"],[hidden],[inert]') && e.getClientRects().length>0 &&
+		getComputedStyle(e).visibility!=='hidden' && e.textContent.trim()==='删除评论');
+}`
+
 func cleanupCommentConfirm(p *rod.Page) (*rod.Element, error) {
 	dialog, err := p.Timeout(5*time.Second).ElementR(".reds-alert", `确认删除此评论`)
 	if err != nil {
@@ -221,7 +231,7 @@ func cleanupCommentConfirm(p *rod.Page) (*rod.Element, error) {
 	}
 	// The website renders this control as a div, not a <button>. Scope it
 	// to the verified deletion dialog and never click a generic “确定”.
-	button, err := dialog.ElementR(".reds-alert-footer .foot-btn.strong", `^确定$`)
+	button, err := dialog.ElementR(".reds-alert-footer .foot-btn.strong", `^(确定|确认)$`)
 	if err != nil {
 		return nil, fmt.Errorf("PAGE_UNCONFIRMED: comment deletion confirm control unavailable")
 	}

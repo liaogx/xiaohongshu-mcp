@@ -8,7 +8,6 @@ import (
 	stderrors "errors"
 	"fmt"
 	"math/rand"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -103,9 +102,9 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	config = config.normalize()
 
 	page := f.page.Context(ctx).Timeout(10 * time.Minute)
-	url := makeFeedDetailURL(feedID, xsecToken)
+	url := pageSite(page).Detail(feedID, xsecToken)
 
-	logrus.Infof("打开 feed 详情页: %s", url)
+	logrus.Infof("打开 feed 详情页: site=%s", pageSite(page))
 	logrus.Infof("配置: 点击更多=%v, 回复阈值=%d, 最大评论数=%d, 滚动速度=%s",
 		config.ClickMoreReplies, config.MaxRepliesThreshold, config.MaxCommentItems, config.ScrollSpeed)
 
@@ -1053,11 +1052,7 @@ func makeFeedDetailURL(feedID, xsecToken string) string {
 	// search results to /website-login/error. The web client also carries the
 	// originating page in `source`; encode all query values instead of placing
 	// the token into the URL verbatim.
-	values := url.Values{}
-	values.Set("xsec_token", xsecToken)
-	values.Set("xsec_source", "pc_search")
-	values.Set("source", "web_explore_feed")
-	return fmt.Sprintf("https://www.xiaohongshu.com/explore/%s?%s", feedID, values.Encode())
+	return ActiveSite().Detail(feedID, xsecToken)
 }
 
 // FeedDetailURL exposes the same URL builder to the service layer so a

@@ -2,12 +2,14 @@
 
 中文 | [English](README_EN.md) · [Apache-2.0](LICENSE)
 
-MCP for 小红书 / xiaohongshu.com。让 AI 助手搜索笔记、获取推荐和详情、查看公开主页，并执行用户授权的发布和互动操作。
+MCP for 小红书 / Xiaohongshu / RedNote。兼容 `www.xiaohongshu.com` 和 `www.rednote.com`，让 AI 助手搜索笔记、获取推荐和详情、查看公开主页，并执行用户授权的发布和互动操作。
 
 本仓库基于 [xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) 修改，是独立维护的衍生版本。Git 历史重新初始化，但保留上游许可证与来源声明，详见 [NOTICE](NOTICE)。本项目与小红书官方无隶属关系。
 
 ### 本版本的主要修改
 
+- [双站点兼容](docs/SITES.md)：保存扫码后的实际站点，统一适配登录、搜索、详情、主页、通知、互动、图文/视频发布和现有账号清理功能。海外手机号登录后跳转 RedNote，无需手改代码或替换 Cookie 域名。
+- 修复搜索筛选的隐藏同名元素误选，以及主页资料先到、列表未加载完时误报空结果的问题。
 - 改进登录失效与安全验证页面识别，避免将验证问题误判为普通搜索超时。
 - 搜索筛选按分组和实际选项定位，并核验选中状态。
 - 登录文件使用私有权限原子保存，增加人工扫码恢复工具。
@@ -16,6 +18,8 @@ MCP for 小红书 / xiaohongshu.com。让 AI 助手搜索笔记、获取推荐�
 - 增加[账号清理计划、执行与回执](docs/ACCOUNT_CLEANUP.md)：支持可核实的笔记/评论删除及取消赞、收藏、关注；明确报告全历史列表缺失及群聊、私信仍需手机端处理的限制。
 
 以下功能演示保留的是**上游公开示例链接**，不同版本的界面可能有差异。
+
+默认使用 `XHS_SITE=auto`，MCP 地址仍为 `http://127.0.0.1:18060/mcp`。升级后先调用 `check_login_status`，结果会显示 `xiaohongshu` 或 `rednote`；配置、旧登录文件迁移及能力边界见[双站点说明](docs/SITES.md)。
 
 ## 项目简介
 

@@ -111,6 +111,26 @@ func TestCleanupBrowserFixtures(t *testing.T) {
 		require.True(t, r.Value.Get("settled").Bool(), "a click point captured during dialog motion can miss after pointer movement")
 		require.Zero(t, r.Value.Get("clicks").Int(), "readiness checks must not dispatch deletion")
 	})
+	t.Run("RedNote confirmation label remains scoped to the deletion dialog", func(t *testing.T) {
+		p := b.NewPage()
+		defer p.Close()
+		require.NoError(t, p.SetDocumentContent(`<div class="foot-btn strong" onclick="window.wrong=true">确认</div><div class="reds-alert"><div>确认删除此评论？</div><div class="reds-alert-footer"><div id="expected-confirm" class="foot-btn strong">确认</div><div class="foot-btn">取消</div></div></div>`))
+		button, err := cleanupCommentConfirm(p)
+		require.NoError(t, err)
+		id, err := button.Attribute("id")
+		require.NoError(t, err)
+		require.Equal(t, "expected-confirm", *id)
+	})
+	t.Run("nested reply deletion skips a hidden parent menu", func(t *testing.T) {
+		p := b.NewPage()
+		defer p.Close()
+		require.NoError(t, p.SetDocumentContent(`<div class="menu-wrapper" style="display:none"><div class="menu-item" id="wrong">删除评论</div></div><div class="menu-wrapper"><div class="menu-item" id="visible-reply-menu">删除评论</div></div>`))
+		menu, err := p.ElementByJS(rod.Eval(commentDeleteMenuJS))
+		require.NoError(t, err)
+		id, err := menu.Attribute("id")
+		require.NoError(t, err)
+		require.Equal(t, "visible-reply-menu", *id)
+	})
 	for _, tc := range []struct {
 		name, body, request string
 		ok                  bool

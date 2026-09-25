@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/liaogx/xiaohongshu-mcp/sites"
 	"github.com/pkg/errors"
 )
 
@@ -17,6 +18,7 @@ type sessionFile struct {
 	Version int             `json:"version"`
 	Seed    int             `json:"seed,omitempty"`
 	SavedAt string          `json:"saved_at,omitempty"`
+	Site    sites.Site      `json:"site,omitempty"`
 	Cookies json.RawMessage `json:"cookies"`
 }
 
@@ -31,6 +33,10 @@ type Cookier interface {
 	LoadSeed() int
 	// SaveSeed 写入 seed，保留文件中已有的 cookies。
 	SaveSeed(seed int) error
+	LoadSite() sites.Site
+	SaveSite(site sites.Site) error
+	// SaveSession atomically binds cookies to the verified post-login site.
+	SaveSession(data []byte, site sites.Site) error
 }
 
 type localCookie struct {
@@ -80,7 +86,35 @@ func (c *localCookie) LoadSeed() int {
 
 // SaveCookies 保存 cookies 到文件中，保留文件里已有的 seed。
 func (c *localCookie) SaveCookies(data []byte) error {
-	return c.write(data, c.LoadSeed())
+	return c.write(data, c.LoadSeed(), c.LoadSite())
+}
+
+func (c *localCookie) LoadSite() sites.Site {
+	data, err := os.ReadFile(c.path)
+	if err != nil {
+		return ""
+	}
+	var f sessionFile
+	if json.Unmarshal(data, &f) != nil {
+		return ""
+	}
+	site, _ := sites.Parse(string(f.Site))
+	return site
+}
+
+func (c *localCookie) SaveSite(site sites.Site) error {
+	data, err := c.LoadCookies()
+	if err != nil {
+		return err
+	}
+	return c.SaveSession(data, site)
+}
+
+func (c *localCookie) SaveSession(data []byte, site sites.Site) error {
+	if _, ok := sites.Parse(string(site)); !ok {
+		return errors.New("unsupported session site")
+	}
+	return c.write(data, c.LoadSeed(), site)
 }
 
 // SaveSeed 写入 seed，保留文件里已有的 cookies。
@@ -89,11 +123,11 @@ func (c *localCookie) SaveSeed(seed int) error {
 	if err != nil {
 		cks = nil // 文件还不存在：先把 seed 落下来，cookies 之后再补
 	}
-	return c.write(cks, seed)
+	return c.write(cks, seed, c.LoadSite())
 }
 
 // write 以 v2 格式落盘。cookies 用 RawMessage 原样嵌入，不经过结构体往返。
-func (c *localCookie) write(cks []byte, seed int) error {
+func (c *localCookie) write(cks []byte, seed int, site sites.Site) error {
 	if len(cks) == 0 {
 		cks = []byte("[]")
 	}
@@ -101,6 +135,7 @@ func (c *localCookie) write(cks []byte, seed int) error {
 	data, err := json.MarshalIndent(sessionFile{
 		Version: 2,
 		Seed:    seed,
+		Site:    site,
 		SavedAt: time.Now().Format(time.RFC3339),
 		Cookies: json.RawMessage(cks),
 	}, "", "  ")

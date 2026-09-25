@@ -32,7 +32,7 @@ func (n *NotificationAction) Reply(ctx context.Context, commentID, content strin
 
 	page := n.page.Timeout(3 * time.Minute)
 
-	page.MustNavigate("https://www.xiaohongshu.com/notification")
+	page.MustNavigate(pageSite(page).Notifications())
 	softWaitLoad(page, "通知回复-通知页")
 	humanize.Delay(ctx, humanize.AfterNavigate)
 

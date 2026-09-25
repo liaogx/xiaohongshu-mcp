@@ -34,7 +34,7 @@ func (n *NotificationAction) Like(ctx context.Context, commentID string, unlike 
 	want := !unlike
 	page := n.page.Timeout(3 * time.Minute)
 
-	page.MustNavigate("https://www.xiaohongshu.com/notification")
+	page.MustNavigate(pageSite(page).Notifications())
 	softWaitLoad(page, "通知点赞-通知页")
 	humanize.Delay(ctx, humanize.AfterNavigate)
 

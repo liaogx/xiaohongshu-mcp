@@ -472,10 +472,10 @@ func (s *XiaohongshuService) ExecuteAccountCleanup(ctx context.Context, args Cle
 
 func cleanupTargetURL(t xiaohongshu.CleanupTarget) string {
 	if t.Scope == xiaohongshu.CleanupNotes {
-		return "https://creator.xiaohongshu.com/new/note-manager"
+		return xiaohongshu.ActiveSite().ManageNotes()
 	}
 	if t.Scope == xiaohongshu.CleanupFollowing {
-		return "https://www.xiaohongshu.com/user/profile/" + t.UserID
+		return xiaohongshu.ActiveSite().Profile(t.UserID, "", "")
 	}
 	// Tokens stay inside the private plan/browser, never in the output report.
 	return xiaohongshu.FeedDetailURL(t.FeedID, t.XsecToken)

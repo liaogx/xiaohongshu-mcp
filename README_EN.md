@@ -2,12 +2,14 @@
 
 [中文](README.md) | English · [Apache-2.0](LICENSE)
 
-MCP for Xiaohongshu: search notes, retrieve recommendations and details, inspect public profiles, and perform user-authorized publishing and interactions.
+MCP for Xiaohongshu and RedNote (`www.xiaohongshu.com` and `www.rednote.com`): search notes, retrieve recommendations and details, inspect public profiles, and perform user-authorized publishing and interactions.
 
 This is an independently maintained, modified distribution of [xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp). It has fresh Git history, but retains the upstream license and attribution; see [NOTICE](NOTICE). It is not affiliated with Xiaohongshu.
 
 ### Changes in this distribution
 
+- [Dual-site support](docs/SITES.md): persist the verified post-login site and use its routes for login, search, notes, profiles, notifications, interactions, image/video publishing and existing cleanup operations. Overseas-account redirects do not require editing code or rewriting cookie domains.
+- Ignore hidden duplicate search controls and wait for the active profile list before reporting an empty result.
 - [Account cleanup plans and receipts](docs/ACCOUNT_CLEANUP.md): verified note/comment deletion and removing likes, favorites and follows. Full history enumeration, group cleanup and direct-message deletion remain limited or require the mobile app; these are explicitly reported, not presented as completed operations.
 
 - More accurate detection of expired login sessions and security-verification pages.
@@ -17,6 +19,8 @@ This is an independently maintained, modified distribution of [xpzouying/xiaohon
 - A generic [image download helper and local gallery index](docs/DOWNLOAD_IMAGES.md).
 
 Feature demos below link to **public upstream examples**. UI details may differ by version.
+
+The default is `XHS_SITE=auto`; the MCP endpoint remains `http://127.0.0.1:18060/mcp`. After upgrading, call `check_login_status` to confirm the account and site (`xiaohongshu` or `rednote`). See [site configuration and limitations](docs/SITES.md).
 
 ## Project Overview
 

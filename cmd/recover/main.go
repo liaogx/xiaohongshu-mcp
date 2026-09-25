@@ -5,16 +5,15 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 	"time"
 
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/liaogx/xiaohongshu-mcp/browser"
 	"github.com/liaogx/xiaohongshu-mcp/cookies"
+	"github.com/liaogx/xiaohongshu-mcp/xiaohongshu"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,20 +21,24 @@ func main() {
 	keyword := flag.String("keyword", "咖啡", "用于检查搜索页可用性的关键词")
 	fresh := flag.Bool("fresh", false, "在新的专用浏览器会话中重新扫码；成功前保留原登录文件")
 	flag.Parse()
+	if err := xiaohongshu.ValidateSiteConfig(); err != nil {
+		fmt.Println(err)
+		return
+	}
 	logrus.SetLevel(logrus.ErrorLevel)
 	store := cookies.NewLoadCookie(cookies.GetCookiesFilePath())
 	b := browser.NewBrowser(false, browser.WithFingerprintSeed(store.LoadSeed()), browser.WithProxy(os.Getenv("XHS_PROXY")))
 	defer b.Close()
 	p := b.NewPage().Timeout(8 * time.Minute)
 	defer p.Close()
-	target := "https://www.xiaohongshu.com/search_result?keyword=" + url.QueryEscape(*keyword) + "&source=web_explore_feed"
+	target := xiaohongshu.ActiveSite().Search(*keyword)
 	if *fresh {
 		// Only clear the new isolated browser, never delete the saved session.
 		if err := (proto.NetworkClearBrowserCookies{}).Call(p); err != nil {
 			fmt.Println("无法建立新的登录会话；原登录文件保持不变")
 			return
 		}
-		target = "https://www.xiaohongshu.com/explore"
+		target = xiaohongshu.ActiveSite().Home()
 	}
 	if err := p.Navigate(target); err != nil {
 		fmt.Println("打开验证页面失败；未修改登录文件")
@@ -74,17 +77,7 @@ func main() {
 			last = state
 		}
 		if state == "ready" {
-			cks, err := p.Browser().GetCookies()
-			if err != nil {
-				fmt.Println("读取登录状态失败")
-				return
-			}
-			data, err := json.Marshal(cks)
-			if err != nil {
-				fmt.Println("编码登录状态失败")
-				return
-			}
-			if err = store.SaveCookies(data); err != nil {
+			if err = xiaohongshu.SaveBrowserSession(p); err != nil {
 				fmt.Println("保存登录状态失败")
 				return
 			}

@@ -109,7 +109,7 @@ func NewNotificationAction(page *rod.Page) *NotificationAction {
 func (n *NotificationAction) UnreadCount(ctx context.Context) (*NotificationCount, error) {
 	page := n.page.Timeout(60 * time.Second)
 
-	page.MustNavigate("https://www.xiaohongshu.com/explore")
+	page.MustNavigate(pageSite(page).Home())
 	softWaitLoad(page, "未读数-explore 页")
 	humanize.Delay(ctx, humanize.AfterNavigate)
 
@@ -162,7 +162,7 @@ func (n *NotificationAction) List(ctx context.Context, tab NotificationTab, limi
 
 	page := n.page.Timeout(3 * time.Minute)
 
-	page.MustNavigate("https://www.xiaohongshu.com/notification")
+	page.MustNavigate(pageSite(page).Notifications())
 	softWaitLoad(page, "通知列表页")
 	humanize.Delay(ctx, humanize.AfterNavigate)
 

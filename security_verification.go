@@ -5,8 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -125,13 +123,10 @@ func (s *XiaohongshuService) openSecurityVerification(targetURL, keyword string,
 
 func securityVerificationURL(keyword string) string {
 	if keyword == "" {
-		return "https://www.xiaohongshu.com/explore"
+		return xiaohongshu.ActiveSite().Home()
 	}
 
-	values := url.Values{}
-	values.Set("keyword", keyword)
-	values.Set("source", "web_explore_feed")
-	return fmt.Sprintf("https://www.xiaohongshu.com/search_result?%s", values.Encode())
+	return xiaohongshu.ActiveSite().Search(keyword)
 }
 
 func (s *XiaohongshuService) watchSecurityVerification(ctx context.Context, session *securityVerificationSession) {

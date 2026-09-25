@@ -9,6 +9,7 @@ import (
 	"github.com/liaogx/xiaohongshu-mcp/browser"
 	"github.com/liaogx/xiaohongshu-mcp/configs"
 	"github.com/liaogx/xiaohongshu-mcp/cookies"
+	"github.com/liaogx/xiaohongshu-mcp/xiaohongshu"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,6 +26,9 @@ func main() {
 	flag.StringVar(&port, "port", ":18060", "端口")
 	flag.StringVar(&token, "token", "", "鉴权 Token，留空则读取 AUTH_TOKEN")
 	flag.Parse()
+	if err := xiaohongshu.ValidateSiteConfig(); err != nil {
+		logrus.Fatal(err)
+	}
 	if token == "" {
 		token = os.Getenv("AUTH_TOKEN")
 	}

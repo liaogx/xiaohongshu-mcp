@@ -55,7 +55,7 @@ func NewUserProfileAction(page *rod.Page) *UserProfileAction {
 func (u *UserProfileAction) UserProfile(ctx context.Context, userID, xsecToken string, tab ProfileTab) (*UserProfileResponse, error) {
 	page := u.page.Context(ctx).Timeout(60 * time.Second) // 重设被 .Context 清掉的 deadline
 
-	searchURL := makeUserProfileURL(userID, xsecToken, tab)
+	searchURL := pageSite(page).Profile(userID, xsecToken, string(tab))
 	page.MustNavigate(searchURL)
 	softWaitStable(page, "用户主页")
 
@@ -69,18 +69,16 @@ func (u *UserProfileAction) extractUserProfileData(page *rod.Page, tab ProfileTa
 	}
 	// 不能只等 __INITIAL_STATE__ 这个壳：壳在页面初始化时就有，userPageData 要等接口
 	// 回来才填。下面的提取是一次性的，拿到空值就直接报错，故这里等到真实数据落地。
-	softWaitData(page, `() => {
-		const u = window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user;
-		const d = u && u.userPageData;
-		return !!(d ? (d.value !== undefined ? d.value : d._value) : null);
-	}`, 15*time.Second, "用户主页数据")
+	if err := waitProfileData(page, tab, 20*time.Second); err != nil {
+		return nil, err
+	}
 
 	userDataResult := page.MustEval(`() => {
 		if (window.__INITIAL_STATE__ &&
 		    window.__INITIAL_STATE__.user &&
 		    window.__INITIAL_STATE__.user.userPageData) {
 			const userPageData = window.__INITIAL_STATE__.user.userPageData;
-			const data = userPageData.value !== undefined ? userPageData.value : userPageData._value;
+			const data = userPageData.value !== undefined ? userPageData.value : userPageData._value !== undefined ? userPageData._value : userPageData;
 			if (data) {
 				return JSON.stringify(data);
 			}
@@ -96,7 +94,7 @@ func (u *UserProfileAction) extractUserProfileData(page *rod.Page, tab ProfileTa
 	notesResult := page.MustEval(`() => {
 		const u = window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user;
 		if (!u || !u.notes) return "";
-		const unwrap = (o) => (o && o.value !== undefined) ? o.value : (o && o._value);
+		const unwrap = (o) => (o && o.value !== undefined) ? o.value : (o && o._value !== undefined) ? o._value : o;
 		const notes = unwrap(u.notes);
 		if (!notes) return "";
 		const active = unwrap(u.activeTab) || {};
@@ -149,11 +147,7 @@ func (u *UserProfileAction) extractUserProfileData(page *rod.Page, tab ProfileTa
 }
 
 func makeUserProfileURL(userID, xsecToken string, tab ProfileTab) string {
-	url := fmt.Sprintf("https://www.xiaohongshu.com/user/profile/%s?xsec_token=%s&xsec_source=pc_note", userID, xsecToken)
-	if tab != "" && tab != TabNotes {
-		url += fmt.Sprintf("&tab=%s&subTab=note", tab)
-	}
-	return url
+	return ActiveSite().Profile(userID, xsecToken, string(tab))
 }
 
 func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context, tab ProfileTab) (*UserProfileResponse, error) {
@@ -187,12 +181,22 @@ func (u *UserProfileAction) selectTab(ctx context.Context, page *rod.Page, tab P
 	}
 
 	label := tabLabel[tab]
+	if err := page.Timeout(15 * time.Second).Wait(rod.Eval(`(label) => {
+		const visible=`+visibleControlJS+`;
+		return [...document.querySelectorAll('.reds-tab-item.sub-tab-list')].some(e=>visible(e)&&e.textContent.trim()===label);
+	}`, label)); err != nil {
+		return fmt.Errorf("PROFILE_TAB_UNCONFIRMED: 未等到主页标签 %s: %w", label, err)
+	}
 	elems, err := page.Elements(`.reds-tab-item.sub-tab-list`)
 	if err != nil {
 		return fmt.Errorf("未找到主页子 tab: %w", err)
 	}
 
 	for _, elem := range elems {
+		visible, err := elem.Eval(`()=> (` + visibleControlJS + `)(this)`)
+		if err != nil || !visible.Value.Bool() {
+			continue
+		}
 		text, err := elem.Text()
 		if err != nil || strings.TrimSpace(text) != label {
 			continue
@@ -206,6 +210,41 @@ func (u *UserProfileAction) selectTab(ctx context.Context, page *rod.Page, tab P
 		return nil
 	}
 	return fmt.Errorf("未找到子 tab %q", label)
+}
+
+// Both sites populate the profile header before the selected note list. Wait
+// for an actual list or confirmed exhaustion; an initial [] is not zero notes.
+const profileDataReadyJS = `(want) => {
+	const unwrap=x=>x?.value??x?._value??x;
+	const u=window.__INITIAL_STATE__?.user;
+	const active=unwrap(u?.activeTab);
+	const fetching=unwrap(u?.isFetchingNotes);
+	const busy=Array.isArray(fetching)?fetching[active?.index]:fetching;
+	if (!unwrap(u?.userPageData) || active?.query !== (want||'note') || busy || unwrap(u?.userFetchingStatus)==='pending') return false;
+	const notes=unwrap(u?.notes)?.[active.index];
+	const query=unwrap(u?.noteQueries)?.[active.index];
+	return Array.isArray(notes) && (notes.length>0 || query?.hasMore===false);
+}`
+
+func waitProfileData(page *rod.Page, tab ProfileTab, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if err := page.GetContext().Err(); err != nil {
+			return err
+		}
+		if err := checkPageAccessible(page); err != nil {
+			return err
+		}
+		if err := checkProfileReadable(page); err != nil {
+			return err
+		}
+		ready, err := page.Timeout(2*time.Second).Eval(profileDataReadyJS, string(tab))
+		if err == nil && ready.Value.Bool() {
+			return nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return fmt.Errorf("PROFILE_DATA_UNCONFIRMED: 主页列表尚未完成加载或所选标签不可读，不能当作零条笔记")
 }
 
 func checkProfileReadable(page *rod.Page) error {

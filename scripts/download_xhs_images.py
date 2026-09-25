@@ -111,10 +111,12 @@ def extension_for(url: str, content_type: str) -> str:
     return ".img"
 
 
-def download_image(url: str, destination: Path, timeout: int) -> tuple[bool, str]:
+def download_image(url: str, destination: Path, timeout: int, site: str = "xiaohongshu") -> tuple[bool, str]:
+    if site not in ("xiaohongshu", "rednote"):
+        raise ValueError("Unsupported image source site")
     headers = {
         "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        "Referer": "https://www.xiaohongshu.com/",
+        "Referer": f"https://www.{site}.com/",
         "User-Agent": USER_AGENT,
     }
     request = Request(url, headers=headers)
@@ -192,6 +194,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, help="私有输出目录，默认用户 Downloads/xiaohongshu-mcp/<关键词>")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="本地 MCP API 地址")
     parser.add_argument("--timeout", type=int, default=90, help="单次请求超时秒数")
+    parser.add_argument("--site", choices=("auto", "xiaohongshu", "rednote"), default="auto", help="图片来源站点；auto 使用 MCP 登录状态中的站点")
     parser.add_argument(
         "--all-images",
         action="store_true",
@@ -211,6 +214,12 @@ def main() -> int:
 
     search_url = f"{args.base_url.rstrip('/')}/api/v1/feeds/search?{urlencode({'keyword': args.keyword})}"
     try:
+        login = json_request(f"{args.base_url.rstrip('/')}/api/v1/login/status", timeout=args.timeout)
+        if not login.get("data", {}).get("is_logged_in"):
+            raise RuntimeError("MCP login is required")
+        site = args.site if args.site != "auto" else login.get("data", {}).get("site", "xiaohongshu")
+        if site not in ("xiaohongshu", "rednote"):
+            raise RuntimeError("Unrecognized MCP site")
         response = json_request(search_url, timeout=args.timeout)
     except Exception as exc:  # noqa: BLE001 - CLI should show a concise actionable error.
         print(f"搜索失败（{safe_error(exc)}），请检查 MCP 登录和服务状态。", file=sys.stderr)
@@ -243,7 +252,7 @@ def main() -> int:
         download_errors: list[str] = []
         for image_index, url in enumerate(urls if args.all_images else urls[:1], start=1):
             target = output_dir / f"{stem}_{image_index:02d}"
-            ok, result = download_image(url, target, args.timeout)
+            ok, result = download_image(url, target, args.timeout, site)
             if ok:
                 files.append(str(Path(result).relative_to(output_dir)))
             else:
@@ -254,7 +263,7 @@ def main() -> int:
                         detail = fetch_detail(args.base_url, feed, args.timeout)
                         fresh_urls = detail_image_urls(detail)
                         for fresh_url in fresh_urls:
-                            ok, result = download_image(fresh_url, target, args.timeout)
+                            ok, result = download_image(fresh_url, target, args.timeout, site)
                             if ok:
                                 files.append(str(Path(result).relative_to(output_dir)))
                                 break

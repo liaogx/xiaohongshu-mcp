@@ -2,6 +2,8 @@
 
 `scripts/download_xhs_images.py` 是本仓库的只读辅助工具，使用本地 MCP 的 HTTP 搜索和详情接口，再下载图片。它不是新增的 MCP 工具，不会评论、回复、点赞、收藏或发布。
 
+兼容小红书与 RedNote。默认 `--site auto` 先读取 MCP 登录状态中的站点，并使用对应图片来源；也可显式设置 `--site rednote` 或 `--site xiaohongshu`。该参数只控制下载请求来源，搜索站点由 MCP 的登录会话决定。
+
 先启动服务并确认 MCP 已登录，安装 Python 3.10 或更新版本，然后在仓库根目录运行：
 
 ```bash

@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 
 	"github.com/go-rod/rod"
@@ -17,6 +16,9 @@ import (
 
 func main() {
 	flag.Parse()
+	if err := xiaohongshu.ValidateSiteConfig(); err != nil {
+		logrus.Fatal(err)
+	}
 
 	// 登录的时候，需要界面，所以不能无头模式。
 	// 登录与后续运行共用同一个 seed：首次登录生成并写入会话文件，之后一直复用。
@@ -69,16 +71,5 @@ func main() {
 }
 
 func saveCookies(page *rod.Page) error {
-	cks, err := page.Browser().GetCookies()
-	if err != nil {
-		return err
-	}
-
-	data, err := json.Marshal(cks)
-	if err != nil {
-		return err
-	}
-
-	cookieLoader := cookies.NewLoadCookie(cookies.GetCookiesFilePath())
-	return cookieLoader.SaveCookies(data)
+	return xiaohongshu.SaveBrowserSession(page)
 }

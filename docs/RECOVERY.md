@@ -4,6 +4,8 @@
 
 ## 先检查 MCP 会话
 
+海外手机号可能扫码后跳转到 `www.rednote.com`。新版会保存实际站点，默认 `XHS_SITE=auto`；检查返回的站点、恢复工具与服务配置应一致。旧文件迁移及显式选择见 [SITES.md](SITES.md)。不要把“检查了错误域名”误报为每天必须重新登录。
+
 1. 调用 `check_login_status`。
 2. 未登录时调用 `get_login_qrcode`，在客户端展示**这个 MCP 会话**返回的二维码。
 3. 扫码后再次调用 `check_login_status`；没有可靠确认前暂停搜索、评论、点赞、发布等操作。

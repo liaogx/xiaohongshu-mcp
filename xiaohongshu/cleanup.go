@@ -262,7 +262,7 @@ func (a *CleanupAction) Inventory(ctx context.Context, scopes []CleanupScope, ma
 
 func (a *CleanupAction) openProfile(ctx context.Context, account string) (*rod.Page, error) {
 	p := a.page.Context(ctx).Timeout(40 * time.Second)
-	if err := p.Navigate("https://www.xiaohongshu.com/user/profile/" + account); err != nil {
+	if err := p.Navigate(pageSite(p).Profile(account, "", "")); err != nil {
 		return nil, err
 	}
 	// The profile header arrives before either tabs or an access error. Do
@@ -309,7 +309,7 @@ func (a *CleanupAction) profileItems(ctx context.Context, account string, tab Pr
 			HasMore  *bool  `json:"has_more"`
 			Fetching bool   `json:"fetching"`
 		}
-		r, err := p.Eval(`() => {const u=window.__INITIAL_STATE__?.user,unwrap=x=>x?.value??x?._value??x;const tab=unwrap(u?.activeTab);const i=tab?.index;const q=unwrap(u?.noteQueries)?.[i];return {current:unwrap(u?.userInfo)?.userId,path:location.pathname,query:tab?.query,feeds:unwrap(u?.notes)?.[i]||[],has_more:typeof q?.hasMore==='boolean'?q.hasMore:null,fetching:!!unwrap(u?.isFetchingNotes)}}`)
+		r, err := p.Eval(`() => {const u=window.__INITIAL_STATE__?.user,unwrap=x=>x?.value??x?._value??x;const tab=unwrap(u?.activeTab);const i=tab?.index;const q=unwrap(u?.noteQueries)?.[i];const fetching=unwrap(u?.isFetchingNotes);return {current:unwrap(u?.userInfo)?.userId,path:location.pathname,query:tab?.query,feeds:unwrap(u?.notes)?.[i]||[],has_more:typeof q?.hasMore==='boolean'?q.hasMore:null,fetching:!!(Array.isArray(fetching)?fetching[i]:fetching)}}`)
 		if err != nil || r.Value.Unmarshal(&v) != nil || v.Query != string(tab) {
 			return nil, false, fmt.Errorf("PAGE_UNCONFIRMED: profile tab changed")
 		}
@@ -345,7 +345,7 @@ func (a *CleanupAction) profileItems(ctx context.Context, account string, tab Pr
 func (a *CleanupAction) followingCount(ctx context.Context, account string) (int, error) {
 	// The count may remain visible even when the profile's note lists are blocked.
 	p := a.page.Context(ctx).Timeout(35 * time.Second)
-	if err := p.Navigate("https://www.xiaohongshu.com/user/profile/" + account); err != nil {
+	if err := p.Navigate(pageSite(p).Profile(account, "", "")); err != nil {
 		return -1, err
 	}
 	if err := p.Wait(rod.Eval(`()=>!!document.querySelector('.user-interactions')`)); err != nil {
@@ -357,8 +357,6 @@ func (a *CleanupAction) followingCount(ctx context.Context, account string) (int
 	}
 	return r.Value.Int(), nil
 }
-
-const creatorCleanupURL = "https://creator.xiaohongshu.com/new/note-manager"
 
 // Tracker metadata belongs to the actual rendered card and carries noteId.
 // Never match destructive targets by title, position, or an unscoped button.
@@ -383,7 +381,7 @@ type creatorSnapshot struct {
 
 func (a *CleanupAction) creatorNotes(ctx context.Context, account string, limit int) ([]CleanupTarget, bool, error) {
 	p := a.page.Context(ctx).Timeout(60 * time.Second)
-	if err := p.Navigate(creatorCleanupURL); err != nil {
+	if err := p.Navigate(pageSite(p).ManageNotes()); err != nil {
 		return nil, false, err
 	}
 	if err := p.Wait(rod.Eval(`()=>!!document.querySelector('.notes-container .tab-item--active')`)); err != nil {
@@ -435,7 +433,7 @@ func (a *CleanupAction) creatorNotes(ctx context.Context, account string, limit 
 
 func (a *CleanupAction) conversations(ctx context.Context, scope CleanupScope, limit int) ([]CleanupTarget, error) {
 	p := a.page.Context(ctx).Timeout(35 * time.Second)
-	if err := p.Navigate("https://www.xiaohongshu.com/chat"); err != nil {
+	if err := p.Navigate(pageSite(p).Chat()); err != nil {
 		return nil, err
 	}
 	if err := p.Wait(rod.Eval(`()=>!!document.querySelector('.xhs-im-conv-list__scroll')`)); err != nil {

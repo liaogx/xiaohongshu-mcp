@@ -8,6 +8,8 @@
 
 **Base URL**: `http://localhost:18060`
 
+同一套 API 兼容 `www.xiaohongshu.com` 和 `www.rednote.com`，参数不变。默认跟随已验证并保存的登录站点，配置与迁移见 [SITES.md](SITES.md)。登录响应新增 `data.site`；`is_logged_in` 为真才代表已确认当前账号。
+
 **注意**: 以下请求与响应均为占位示例，仅展示主要字段结构，不是真实账号或操作回执。完整字段请通过实际 API 调用查看。登录失效和安全验证处理见 [RECOVERY.md](RECOVERY.md)。
 
 ## 访问鉴权（可选）
@@ -114,6 +116,7 @@ GET /api/v1/login/status
   "success": true,
   "data": {
     "is_logged_in": true,
+    "site": "rednote",
     "username": "用户名"
   },
   "message": "检查登录状态成功"

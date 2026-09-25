@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -48,6 +47,7 @@ type PublishRequest struct {
 // LoginStatusResponse 登录状态响应
 type LoginStatusResponse struct {
 	IsLoggedIn bool   `json:"is_logged_in"`
+	Site       string `json:"site"`               // xiaohongshu or rednote
 	Username   string `json:"username,omitempty"` // 当前登录账号的昵称
 	UserID     string `json:"user_id,omitempty"`  // 用户唯一标识（个人主页 URL 中的 ID）
 }
@@ -124,6 +124,7 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 
 	response := &LoginStatusResponse{
 		IsLoggedIn: isLoggedIn,
+		Site:       string(xiaohongshu.ActiveSite()),
 	}
 
 	// Account identity must be readable before returning a confirmed login.
@@ -663,18 +664,7 @@ func newBrowser() *headless_browser.Browser {
 }
 
 func saveCookies(page *rod.Page) error {
-	cks, err := page.Browser().GetCookies()
-	if err != nil {
-		return err
-	}
-
-	data, err := json.Marshal(cks)
-	if err != nil {
-		return err
-	}
-
-	cookieLoader := cookies.NewLoadCookie(cookies.GetCookiesFilePath())
-	return cookieLoader.SaveCookies(data)
+	return xiaohongshu.SaveBrowserSession(page)
 }
 
 // withBrowserPage 执行需要浏览器页面的操作的通用函数

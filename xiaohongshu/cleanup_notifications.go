@@ -13,7 +13,7 @@ import (
 func (a *CleanupAction) notificationCommentTargets(ctx context.Context, account string, scope CleanupScope, limit int) ([]CleanupTarget, error) {
 	if a.notificationSnapshot == nil {
 		p := a.page.Context(ctx).Timeout(90 * time.Second)
-		if err := p.Navigate("https://www.xiaohongshu.com/notification"); err != nil {
+		if err := p.Navigate(pageSite(p).Notifications()); err != nil {
 			return nil, err
 		}
 		if err := p.Timeout(20 * time.Second).Wait(rod.Eval(`()=>window.__INITIAL_STATE__?.notification?.notificationMap?.mentions?.messageList?.length>0 || !!document.querySelector('.login-container')?.getClientRects().length || /\/website-login\//.test(location.pathname)`)); err != nil {

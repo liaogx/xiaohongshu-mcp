@@ -49,6 +49,12 @@ class DownloadTests(unittest.TestCase):
                 self.assertTrue(ok)
                 self.assertIsNone(request.call_args.args[0].get_header('Authorization'))
                 self.assertEqual(Path(path).read_bytes(), b'synthetic-image')
+                ok, _ = subject.download_image('https://example.com/image.png', root / 'rednote-cover', 1, 'rednote')
+                self.assertTrue(ok)
+                self.assertEqual(request.call_args.args[0].get_header('Referer'), 'https://www.rednote.com/')
+                self.assertIsNone(request.call_args.args[0].get_header('Authorization'))
+                with self.assertRaises(ValueError):
+                    subject.download_image('https://example.com/image.png', root / 'invalid', 1, 'invalid')
             subject.write_index(root, [{'rank': 1, 'title': '<script>example</script>',
                                         'author': '<example>', 'files': ['cover.png']}])
             page = (root / 'index.html').read_text()

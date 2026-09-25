@@ -40,4 +40,6 @@ docker compose -f docker/docker-compose.yml stop
 
 Compose 从宿主环境读取 `AUTH_TOKEN` 与 `XHS_PROXY`，请在本机安全注入，不要把真实值写入源码或示例。启用鉴权后，客户端需要 `Authorization: Bearer <YOUR_TOKEN>`。代理支持情况以服务实现为准；含认证信息的代理地址也是凭证。
 
+`XHS_SITE` 默认 `auto`，支持 `xiaohongshu` 与 `rednote`。登录、服务、人工恢复工具应保持一致配置，详见[双站点说明](../docs/SITES.md)。
+
 不要把运行日志、二维码、cookies 文件或完整请求响应粘贴到公开 Issue。

@@ -14,5 +14,6 @@ services:
       COOKIES_PATH: /app/data/cookies.json
       AUTH_TOKEN: ${AUTH_TOKEN:-}
       XHS_PROXY: ${XHS_PROXY:-}
+      XHS_SITE: ${XHS_SITE:-auto}
     ports:
       - "127.0.0.1:18060:18060"

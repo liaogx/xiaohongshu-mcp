@@ -19,7 +19,7 @@ type FeedsListAction struct {
 func NewFeedsListAction(page *rod.Page) *FeedsListAction {
 	pp := page.Timeout(60 * time.Second)
 
-	pp.MustNavigate("https://www.xiaohongshu.com")
+	pp.MustNavigate(pageSite(pp).Home())
 	softWaitDOMStable(pp, "首页笔记列表")
 
 	return &FeedsListAction{page: pp}
@@ -36,7 +36,7 @@ func (f *FeedsListAction) GetFeedsList(ctx context.Context) ([]Feed, error) {
 			    window.__INITIAL_STATE__.feed &&
 			    window.__INITIAL_STATE__.feed.feeds) {
 				const feeds = window.__INITIAL_STATE__.feed.feeds;
-				const feedsData = feeds.value !== undefined ? feeds.value : feeds._value;
+				const feedsData = feeds.value !== undefined ? feeds.value : feeds._value !== undefined ? feeds._value : feeds;
 				if (feedsData) {
 					return JSON.stringify(feedsData);
 				}

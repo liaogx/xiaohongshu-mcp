@@ -8,8 +8,33 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/liaogx/xiaohongshu-mcp/sites"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestSiteMetadataSurvivesUpdates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cookies.json")
+	store := NewLoadCookie(path)
+	raw := []byte(`[{"name":"fixture","domain":".rednote.com","value":"synthetic"}]`)
+	assert.NoError(t, os.WriteFile(path, raw, 0600))
+	assert.Empty(t, store.LoadSite(), "legacy arrays have no site")
+	assert.NoError(t, store.SaveSession(raw, sites.RedNote))
+	assert.NoError(t, store.SaveSeed(12345))
+	assert.Equal(t, sites.RedNote, store.LoadSite())
+	assert.NoError(t, store.SaveCookies(raw))
+	assert.Equal(t, sites.RedNote, store.LoadSite())
+	assert.Equal(t, 12345, store.LoadSeed())
+	got, err := store.LoadCookies()
+	assert.NoError(t, err)
+	assert.Equal(t, decodeJSON(t, raw), decodeJSON(t, got))
+	assert.Error(t, store.SaveSession(raw, sites.Site("unsupported")))
+	assert.Equal(t, sites.RedNote, store.LoadSite())
+	assert.NoError(t, store.SaveSite(sites.Xiaohongshu))
+	assert.Equal(t, sites.Xiaohongshu, store.LoadSite())
+	info, err := os.Stat(path)
+	assert.NoError(t, err)
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+}
 
 // TestGetCookiesFilePath 校验路径优先级：COOKIES_PATH > 当前目录 > /tmp（旧路径兜底）。
 // 用 TMPDIR 重定向 os.TempDir()、t.Chdir 重定向当前目录，做到 hermetic、不碰真实 /tmp。

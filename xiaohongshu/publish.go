@@ -36,8 +36,6 @@ type PublishAction struct {
 }
 
 const (
-	urlOfPublic = `https://creator.xiaohongshu.com/publish/publish?source=official`
-
 	// contentElemTimeout 查找正文输入框的轮询窗口
 	contentElemTimeout = 10 * time.Second
 )
@@ -46,7 +44,7 @@ func NewPublishImageAction(page *rod.Page) (*PublishAction, error) {
 
 	pp := page.Timeout(300 * time.Second)
 
-	if err := pp.Navigate(urlOfPublic); err != nil {
+	if err := pp.Navigate(pageSite(pp).Publish()); err != nil {
 		return nil, errors.Wrap(err, "导航到发布页面失败")
 	}
 
@@ -902,6 +900,9 @@ func setVisibility(page *rod.Page, visibility string) error {
 		return errors.Wrap(err, "查找可见范围选项失败")
 	}
 	for _, opt := range opts {
+		if !isElementVisible(opt) {
+			continue
+		}
 		text, err := opt.Text()
 		if err != nil {
 			continue
@@ -911,7 +912,13 @@ func setVisibility(page *rod.Page, visibility string) error {
 				return errors.Wrap(err, "选择可见范围失败")
 			}
 			slog.Info("已设置可见范围", "visibility", visibility)
-			time.Sleep(200 * time.Millisecond)
+			// In both creator sites, a click alone is not proof of privacy.
+			if err := page.Timeout(3 * time.Second).Wait(rod.Eval(`(expected) => {
+				const e=document.querySelector('div.permission-card-wrapper div.d-select-content');
+				return !!e && e.textContent.includes(expected);
+			}`, visibility)); err != nil {
+				return errors.Wrap(err, "VISIBILITY_UNCONFIRMED: 发布前未确认可见范围")
+			}
 			return nil
 		}
 	}

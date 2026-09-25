@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -105,7 +104,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	// 否则搜索页不 stable 时 MustWaitStable/MustWait 会永久挂起（无 deadline 可依赖）。
 	page := s.page.Context(ctx).Timeout(60 * time.Second)
 
-	searchURL := makeSearchURL(keyword)
+	searchURL := pageSite(s.page).Search(keyword)
 	if err := page.Navigate(searchURL); err != nil {
 		return nil, fmt.Errorf("打开搜索页失败: %w", err)
 	}
@@ -436,6 +435,13 @@ func findFilterOption(page *rod.Page, pf pendingFilter) (*rod.Element, error) {
 
 		var available []string
 		for _, opt := range options {
+			visible, err := opt.Eval(`() => (` + visibleControlJS + `)(this)`)
+			if err != nil {
+				return nil, err
+			}
+			if !visible.Value.Bool() {
+				continue
+			}
 			t, err := opt.Text()
 			if err != nil {
 				continue
@@ -470,30 +476,36 @@ func filterOptionSelected(option *rod.Element) (bool, error) {
 	return res.Value.Bool(), nil
 }
 
+// Select only user-visible controls. Hidden duplicate labels must never count
+// as a selected option or receive an action instead of the rendered control.
+const visibleControlJS = `(e) => {
+	if (!e || e.closest('[aria-hidden="true"], [hidden], [inert]') || !e.getClientRects().length) return false;
+	for (let p=e; p; p=p.parentElement) {
+		const style=getComputedStyle(p);
+		if (style.display==='none' || style.visibility==='hidden' || Number(style.opacity)<0.05) return false;
+	}
+	return true;
+}`
+
 const filterSelectedJS = `(label, text) => {
+	const visible = ` + visibleControlJS + `;
 	const group = Array.from(document.querySelectorAll('div.filter-panel div.filters'))
 		.find(g => g.querySelector(':scope > span')?.textContent.trim() === label);
 	return !!group && Array.from(group.querySelectorAll('div.tags')).some(o =>
-		!o.querySelector('div.tags') && o.textContent.trim() === text && o.classList.contains('active'));
+		visible(o) && !o.querySelector('div.tags') && o.textContent.trim() === text && o.classList.contains('active'));
 }`
 
 const filterClickJS = `(label, text) => {
+	const visible = ` + visibleControlJS + `;
 	const group = Array.from(document.querySelectorAll('div.filter-panel div.filters'))
 		.find(g => g.querySelector(':scope > span')?.textContent.trim() === label);
 	const option = group && Array.from(group.querySelectorAll('div.tags')).find(o =>
-		!o.querySelector('div.tags') && o.textContent.trim() === text);
+		visible(o) && !o.querySelector('div.tags') && o.textContent.trim() === text);
 	if (!option || !option.getClientRects().length || getComputedStyle(option).visibility === 'hidden') return false;
 	option.click();
 	return true;
 }`
 
 func makeSearchURL(keyword string) string {
-
-	values := url.Values{}
-	values.Set("keyword", keyword)
-	values.Set("source", "web_explore_feed")
-
-	//https://www.xiaohongshu.com/search_result?keyword=%25E7%258E%258B%25E5%25AD%2590&source=web_search_result_notes
-	//https://www.xiaohongshu.com/search_result?keyword=%25E7%258E%258B%25E5%25AD%2590&source=web_explore_feed
-	return fmt.Sprintf("https://www.xiaohongshu.com/search_result?%s", values.Encode())
+	return ActiveSite().Search(keyword)
 }

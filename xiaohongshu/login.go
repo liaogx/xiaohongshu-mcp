@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/liaogx/xiaohongshu-mcp/sites"
 	"github.com/pkg/errors"
 )
 
@@ -20,14 +21,34 @@ func NewLogin(page *rod.Page) *LoginAction {
 }
 
 func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
+	if err := ValidateSiteConfig(); err != nil {
+		return false, err
+	}
+	for _, site := range loginSites() {
+		logged, err := a.checkLoginAt(ctx, site)
+		if err != nil {
+			return false, err
+		}
+		if logged {
+			if err := SaveBrowserSession(a.page.Context(ctx)); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (a *LoginAction) checkLoginAt(ctx context.Context, site sites.Site) (bool, error) {
 	// 加超时保护：只是查登录态的快速检查，不应无限挂（登录扫码的等待在 Login/WaitForLogin 里）
 	pp := a.page.Context(ctx).Timeout(30 * time.Second)
-	if err := pp.Navigate("https://www.xiaohongshu.com/explore"); err != nil {
+	if err := pp.Navigate(site.Home()); err != nil {
 		return false, errors.Wrap(err, "open login status page failed")
 	}
 	// A sidebar element can exist in a guest page. Require a non-guest account
 	// in page state; distinguish a security challenge from an expired login.
 	deadline := time.Now().Add(25 * time.Second)
+	var loginVisibleSince time.Time
 	for time.Now().Before(deadline) {
 		if err := pp.GetContext().Err(); err != nil {
 			return false, errors.Wrap(err, "check login status interrupted")
@@ -38,9 +59,21 @@ func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
 				return false, probe.accessError()
 			}
 			if probe.LoginVisible {
-				return false, nil
+				// QR login may redirect from the domestic site to RedNote.
+				// Allow transient overlays to settle before declaring logout.
+				if loginVisibleSince.IsZero() {
+					loginVisibleSince = time.Now()
+				}
+				if time.Since(loginVisibleSince) >= time.Second {
+					return false, nil
+				}
+			} else {
+				loginVisibleSince = time.Time{}
 			}
-			if probe.Authenticated {
+			if probe.Authenticated && !probe.LoginVisible {
+				if _, ok := pageOriginSite(pp); !ok {
+					return false, errors.New("LOGIN_STATUS_UNCONFIRMED: unsupported login origin")
+				}
 				return true, nil
 			}
 		}
@@ -104,10 +137,17 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	pp := a.page.Context(ctx)
-	if err := pp.Navigate("https://www.xiaohongshu.com/explore"); err != nil {
+	if err := ValidateSiteConfig(); err != nil {
+		return "", false, err
+	}
+	if err := pp.Navigate(pageSite(pp).Home()); err != nil {
 		return "", false, errors.Wrap(err, "LOGIN_QRCODE_UNCONFIRMED: open login page failed")
 	}
-	return waitLoginQrcode(ctx, pp)
+	image, logged, err := waitLoginQrcode(ctx, pp)
+	if err == nil && logged {
+		err = SaveBrowserSession(pp)
+	}
+	return image, logged && err == nil, err
 }
 
 // A slow page may become authenticated without ever rendering a QR image.

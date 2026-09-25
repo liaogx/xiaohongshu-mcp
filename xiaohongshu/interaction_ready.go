@@ -78,7 +78,7 @@ func prepareNote(ctx context.Context, page *rod.Page, feedID, token string, need
 	defer cancel()
 	p := page.Context(ctx)
 	if navigate {
-		if err := p.Navigate(makeFeedDetailURL(feedID, token)); err != nil {
+		if err := p.Navigate(pageSite(p).Detail(feedID, token)); err != nil {
 			return nil, &InteractionError{Stage: "navigate", State: "not_sent", Cause: err}
 		}
 	}
