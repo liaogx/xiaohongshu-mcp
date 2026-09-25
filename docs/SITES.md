@@ -18,10 +18,10 @@ XHS_SITE=auto ./xiaohongshu-mcp -port 127.0.0.1:18060
 
 登录文件继续兼容原来的裸 Cookie 数组和 v2 对象，v2 新增 `site` 字段，原有 `seed` 保留。Cookie 的域名、值及访问令牌不在两个站点之间改写。
 
-需要指定站点时，登录工具、恢复工具和服务均可使用同一环境变量：
+需要指定站点时，主程序的登录、恢复和服务入口均使用同一环境变量：
 
 ```bash
-XHS_SITE=rednote go run ./cmd/login
+XHS_SITE=rednote go run . login
 XHS_SITE=rednote go run . -port 127.0.0.1:18060
 # 国内站可使用 XHS_SITE=xiaohongshu。
 ```

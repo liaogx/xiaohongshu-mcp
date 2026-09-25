@@ -15,20 +15,20 @@
 
 `LOGIN_STATUS_UNCONFIRMED` 表示页面尚未提供可核实的账号，不等于已经确认 Cookie 过期；清理流程同样必须暂停。`get_login_qrcode` 会在有界等待内同时检查真实登录账号和可见二维码，已登录页面不必出现二维码。返回 `LOGIN_QRCODE_UNCONFIRMED` 时，不要反复新建扫码会话，应检查当前专用浏览器或使用下面的人工恢复工具。扫码等待也要求真实非游客账号，侧栏占位元素不算登录成功。
 
-## 使用人工恢复工具
+## 使用主程序内置恢复入口
 
-恢复工具使用项目自己的浏览器和登录文件，不导入日常浏览器资料，不自动解决验证码，不发表评论。
+从 v1.0.1 起无需单独下载恢复工具。主程序的 `recover` 子命令使用项目自己的浏览器和登录文件，不导入日常浏览器资料，不自动解决验证码，不发表评论。
 
 ```bash
-go build -o bin/xiaohongshu-recover ./cmd/recover
+go build -o bin/xiaohongshu-mcp .
 # 将占位路径替换为现有 MCP 服务使用的私有文件绝对路径。
-COOKIES_PATH=/absolute/private/cookies.json ./bin/xiaohongshu-recover -keyword '咖啡'
+COOKIES_PATH=/absolute/private/cookies.json ./bin/xiaohongshu-mcp recover -keyword '咖啡'
 
 # 在新的专用浏览器会话重新扫码，成功前不替换原登录文件。
-COOKIES_PATH=/absolute/private/cookies.json ./bin/xiaohongshu-recover -fresh
+COOKIES_PATH=/absolute/private/cookies.json ./bin/xiaohongshu-mcp recover -fresh
 ```
 
-Windows 使用 `.exe` 输出文件。恢复工具和 MCP 必须使用相同的 `COOKIES_PATH`，以及一致的代理和浏览器指纹配置；不要在运行时随意更换这些设置。先暂停正在执行的任务，避免并行写入会话。
+下载版跳过编译，把程序路径替换为所下载的带平台后缀文件名；Windows 使用 `.exe` 文件。`login`、`recover` 与服务必须使用相同的 `COOKIES_PATH`，以及一致的站点、代理和浏览器指纹配置；不要在运行时随意更换这些设置。先暂停正在执行的任务，避免并行写入会话。
 
 在打开的窗口手动完成登录或安全验证。工具确认真实非游客账号和搜索页面状态后，才将会话原子保存到原登录文件；不会把失效或未确认的会话当作成功。超时或异常后，以工具提示和 MCP 重新检查为准。只出现二维码不代表已经登录。
 
@@ -40,6 +40,6 @@ Windows 使用 `.exe` 输出文件。恢复工具和 MCP 必须使用相同的 `
 
 ## 使用私有运行目录
 
-源码、构建产物和账号资料应分离。登录工具、服务、恢复工具使用相同的私有 `COOKIES_PATH`；目录权限建议只允许当前用户访问。Cookie 保存采用同目录临时文件、私有文件权限与原子替换。
+源码、构建产物和账号资料应分离。主程序所有入口使用相同的私有 `COOKIES_PATH`；目录权限建议只允许当前用户访问。Cookie 保存采用同目录临时文件、私有文件权限与原子替换。
 
 不要公开上传登录二维码、cookies、浏览器资料、含令牌的笔记链接、账号信息、真实评论回执或日志。公开反馈请使用占位符和去标识化的最小复现。

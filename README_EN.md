@@ -2,7 +2,7 @@
 
 [中文](README.md) | English · [Apache-2.0](LICENSE)
 
-**Stable release v1.0.0:** [Download binaries](https://github.com/liaogx/xiaohongshu-mcp/releases/tag/v1.0.0) · [Release notes and quick start](docs/releases/v1.0.0.md). macOS Apple Silicon, Windows x64 and Linux x64 builds are available; running a downloaded executable does not require Go.
+**Stable release v1.0.1:** [Download one executable](https://github.com/liaogx/xiaohongshu-mcp/releases/tag/v1.0.1) · [Release notes and quick start](docs/releases/v1.0.1.md). macOS Apple Silicon, Windows x64 and Linux x64 builds include login and manual recovery; no Go installation is required.
 
 MCP for Xiaohongshu and RedNote (`www.xiaohongshu.com` and `www.rednote.com`): search notes, retrieve recommendations and details, inspect public profiles, and perform user-authorized publishing and interactions.
 
@@ -262,7 +262,7 @@ Login sessions, QR codes, downloaded media, logs, and interaction receipts are p
 
 ### 1.1. Get this version
 
-**Download (recommended):** choose the `xiaohongshu-mcp` server and `xiaohongshu-login` tool for your system from [this repository's Releases](https://github.com/liaogx/xiaohongshu-mcp/releases). The `xiaohongshu-recover` tool is optional. See the [release instructions](docs/releases/v1.0.0.md) for platform-specific filenames, startup commands and SHA256 verification. GitHub's `Source code` archives do not contain ready-to-run programs.
+**Download (recommended):** choose just one `xiaohongshu-mcp` executable for your system from [the latest release](https://github.com/liaogx/xiaohongshu-mcp/releases/latest). The same file starts the server, performs QR login with `login`, and opens manual verification with `recover`. See the [release instructions](docs/releases/v1.0.1.md) for filenames, commands and SHA256 verification. GitHub's `Source code` archives do not contain ready-to-run programs.
 
 **Build from source:** the `./bin/` examples below refer to this option.
 
@@ -273,15 +273,13 @@ git clone https://github.com/liaogx/xiaohongshu-mcp.git
 cd xiaohongshu-mcp
 go mod download
 go build -o bin/xiaohongshu-mcp .
-go build -o bin/xiaohongshu-login ./cmd/login
-go build -o bin/xiaohongshu-recover ./cmd/recover
 ```
 
 The bundled browser supports macOS Apple Silicon, Windows x64, and Linux x64. Windows executables should use `.exe` output names. macOS Intel and Linux ARM64 are not currently supported by the browser distribution. The first launch downloads and verifies the browser; later launches reuse the cache.
 
 Optional module proxy: set `GOPROXY=https://goproxy.cn,direct` for the build if required by your network.
 
-All three tools support `-version` without opening a browser. The server reports the same build version through MCP server information and `/health`; the MCP protocol date is separate. See [release builds](docs/RELEASING.md) for the multi-platform packaging script.
+The executable supports `-help` and `-version` without downloading or opening a browser. The server reports the same build version through MCP server information and `/health`; the MCP protocol date is separate. See [release builds](docs/RELEASING.md) for the packaging script.
 
 **Docker:** build this checkout with `docker compose -f docker/docker-compose.yml up -d --build`. See the [Docker guide](docker/README.md) and [Windows guide](docs/windows_guide.md).
 
@@ -289,19 +287,19 @@ All three tools support `-version` without opening a browser. The server reports
 
 First time requires manual login to save RedNote login status.
 
-Create a private runtime directory outside the repository and set the same `COOKIES_PATH` for the login tool, server, and recovery tool. Never commit login files or logs. Run the commands below with that environment; see [recovery and data isolation](docs/RECOVERY.md).
+Create a private runtime directory outside the repository and set the same `COOKIES_PATH` for all commands. Never commit login files or logs. Run the commands below with that environment; see [recovery and data isolation](docs/RECOVERY.md). For downloaded builds, replace `./bin/xiaohongshu-mcp` with the actual downloaded file path.
 
 **Using Binary Files:**
 
 ```bash
-# Run the login tool for your platform
-./bin/xiaohongshu-login
+# Open QR login with the same executable; it exits after completion
+./bin/xiaohongshu-mcp login
 ```
 
 **Using Source Code:**
 
 ```bash
-go run ./cmd/login
+go run . login
 ```
 
 ### 1.3. Start MCP Service
@@ -314,21 +312,30 @@ For local use, append `-port=127.0.0.1:18060` to bind only to loopback. The exis
 
 ```bash
 # Default: Headless mode, no browser interface
-./bin/xiaohongshu-mcp
+./bin/xiaohongshu-mcp -port=127.0.0.1:18060
 
 # Non-headless mode, with browser interface
-./bin/xiaohongshu-mcp -headless=false
+./bin/xiaohongshu-mcp -port=127.0.0.1:18060 -headless=false
 ```
 
 **Using Source Code:**
 
 ```bash
 # Default: Headless mode, no browser interface
-go run .
+go run . -port=127.0.0.1:18060
 
 # Non-headless mode, with browser interface
-go run . -headless=false
+go run . -port=127.0.0.1:18060 -headless=false
 ```
+
+**Manual verification or a fresh QR login:** pause ongoing tasks first, then use the same executable. Afterwards, recheck login and perform one read-only search.
+
+```bash
+./bin/xiaohongshu-mcp recover
+./bin/xiaohongshu-mcp recover -fresh
+```
+
+`recover` opens manual verification; `recover -fresh` starts a new QR login without replacing the saved session before confirmation. Put subcommands before options, for example `recover -keyword 'coffee'`. Existing server flags and MCP client URLs remain compatible.
 
 **Configure a proxy (optional)**:
 

@@ -13,7 +13,7 @@ RUN go mod download
 
 COPY . .
 # VERSION 可通过 --build-arg 覆盖；默认与当前发行版本一致。
-ARG VERSION=1.0.0
+ARG VERSION=1.0.1
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=${VERSION}" -o /out/app .
 
 # ---- run stage ----

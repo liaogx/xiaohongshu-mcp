@@ -2,7 +2,7 @@
 
 中文 | [English](README_EN.md) · [Apache-2.0](LICENSE)
 
-**稳定版 v1.0.0：**[下载主程序、登录与恢复工具](https://github.com/liaogx/xiaohongshu-mcp/releases/tag/v1.0.0) · [发行说明与快速启动](docs/releases/v1.0.0.md)。支持 macOS Apple Silicon、Windows x64、Linux x64，下载版无需安装 Go。
+**稳定版 v1.0.1：**[下载一个主程序即可](https://github.com/liaogx/xiaohongshu-mcp/releases/tag/v1.0.1) · [发行说明与快速启动](docs/releases/v1.0.1.md)。支持 macOS Apple Silicon、Windows x64、Linux x64，内置登录与人工验证恢复，无需安装 Go。
 
 MCP for 小红书 / Xiaohongshu / RedNote。兼容 `www.xiaohongshu.com` 和 `www.rednote.com`，让 AI 助手搜索笔记、获取推荐和详情、查看公开主页，并执行用户授权的发布和互动操作。
 
@@ -261,7 +261,7 @@ https://github.com/user-attachments/assets/cc385b6c-422c-489b-a5fc-63e92c695b80
 
 ### 1.1. 获取程序
 
-**直接下载（推荐）：**进入[本仓库 Releases](https://github.com/liaogx/xiaohongshu-mcp/releases)，选择系统对应的 `xiaohongshu-mcp` 和 `xiaohongshu-login`；`xiaohongshu-recover` 是可选的人工恢复工具。使用文件名带平台后缀的程序，启动示例和 SHA256 校验方式见[发行说明](docs/releases/v1.0.0.md)。`Source code` 附件是源码，不是可直接运行的程序。
+**直接下载（推荐）：**进入[本仓库 Releases](https://github.com/liaogx/xiaohongshu-mcp/releases/latest)，只下载系统对应的一个 `xiaohongshu-mcp` 文件。它同时提供服务、`login` 扫码登录和 `recover` 人工恢复，不需要其他可执行文件。带平台后缀的实际文件名、快速启动及 SHA256 校验见[发行说明](docs/releases/v1.0.1.md)。`Source code` 附件是源码，不是可直接运行的程序。
 
 **从源码编译：**下文的 `./bin/` 路径示例适用于这种方式。
 
@@ -272,15 +272,13 @@ git clone https://github.com/liaogx/xiaohongshu-mcp.git
 cd xiaohongshu-mcp
 go mod download
 go build -o bin/xiaohongshu-mcp .
-go build -o bin/xiaohongshu-login ./cmd/login
-go build -o bin/xiaohongshu-recover ./cmd/recover
 ```
 
 内置浏览器支持 macOS Apple Silicon、Windows x64、Linux x64。Windows 编译时请为输出文件增加 `.exe` 后缀；macOS Intel、Linux ARM64 暂无对应内置浏览器。首次启动会下载并校验浏览器，后续复用缓存。
 
 国内网络如有需要，可为编译命令设置 `GOPROXY=https://goproxy.cn,direct`。
 
-各工具支持 `-version`，输出版本、提交、构建时间与平台，不打开浏览器。MCP 连接信息和 `/health` 的版本号与主程序一致；MCP 协议日期是另一项信息。开发者构建多平台发行附件的方法见[发行构建说明](docs/RELEASING.md)。
+主程序支持 `-help` 和 `-version`，不下载或打开浏览器。MCP 连接信息和 `/health` 的版本号与主程序一致；MCP 协议日期是另一项信息。开发者构建多平台发行附件的方法见[发行构建说明](docs/RELEASING.md)。
 
 **Docker 部署：**在本仓库根目录执行 `docker compose -f docker/docker-compose.yml up -d --build`，从当前源码构建。详见 [Docker 指南](docker/README.md)和 [Windows 指南](docs/windows_guide.md)。
 
@@ -288,19 +286,19 @@ go build -o bin/xiaohongshu-recover ./cmd/recover
 
 第一次需要手动登录，需要保存小红书的登录状态。
 
-建议先在仓库外创建私有运行目录，并为登录工具、服务、恢复工具统一设置 `COOKIES_PATH`。不要把登录文件和日志提交 Git。下面的命令应在同一配置环境中运行，详见[恢复与数据隔离说明](docs/RECOVERY.md)。
+建议先在仓库外创建私有运行目录，并为主程序各入口统一设置 `COOKIES_PATH`。不要把登录文件和日志提交 Git。下面的命令应在同一配置环境中运行，详见[恢复与数据隔离说明](docs/RECOVERY.md)。下载版将示例中的 `./bin/xiaohongshu-mcp` 换成下载文件的实际路径即可。
 
 **使用二进制文件**：
 
 ```bash
-# 运行对应平台的登录工具
-./bin/xiaohongshu-login
+# 同一个程序打开扫码窗口，完成后退出
+./bin/xiaohongshu-mcp login
 ```
 
 **使用源码**：
 
 ```bash
-go run ./cmd/login
+go run . login
 ```
 
 ### 1.3. 启动 MCP 服务
@@ -313,21 +311,30 @@ go run ./cmd/login
 
 ```bash
 # 默认：无头模式，没有浏览器界面
-./bin/xiaohongshu-mcp
+./bin/xiaohongshu-mcp -port=127.0.0.1:18060
 
 # 非无头模式，有浏览器界面
-./bin/xiaohongshu-mcp -headless=false
+./bin/xiaohongshu-mcp -port=127.0.0.1:18060 -headless=false
 ```
 
 **使用源码**：
 
 ```bash
 # 默认：无头模式，没有浏览器界面
-go run .
+go run . -port=127.0.0.1:18060
 
 # 非无头模式，有浏览器界面
-go run . -headless=false
+go run . -port=127.0.0.1:18060 -headless=false
 ```
+
+**人工验证或重新扫码：**先暂停正在执行的任务，再用同一个程序运行；完成后重新检查登录并做一次只读搜索。
+
+```bash
+./bin/xiaohongshu-mcp recover
+./bin/xiaohongshu-mcp recover -fresh
+```
+
+`recover` 打开人工验证窗口；`recover -fresh` 重新扫码，确认前保留原登录文件。子命令放在选项前，例如 `recover -keyword '咖啡'`。服务仍兼容原有的不带子命令启动方式，不需要修改现有 MCP 客户端地址。
 
 **配置代理（可选）**：
 

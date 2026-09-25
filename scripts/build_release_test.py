@@ -14,7 +14,8 @@ class ReleaseTests(unittest.TestCase):
                 subject.release_version(tag)
         names = {subject.asset_name(p, goos, arch) for p, _ in subject.PROGRAMS
                  for goos, arch in subject.PLATFORMS}
-        self.assertEqual(len(names), 9)
+        self.assertEqual(len(names), 3)
+        self.assertEqual(subject.PROGRAMS, (('xiaohongshu-mcp', '.'),))
         self.assertIn('xiaohongshu-mcp-windows-amd64.exe', names)
         self.assertNotIn('xiaohongshu-mcp-darwin-amd64', names)
 

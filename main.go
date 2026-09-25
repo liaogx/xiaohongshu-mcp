@@ -3,13 +3,13 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
 	"github.com/liaogx/xiaohongshu-mcp/browser"
 	"github.com/liaogx/xiaohongshu-mcp/configs"
 	"github.com/liaogx/xiaohongshu-mcp/cookies"
+	"github.com/liaogx/xiaohongshu-mcp/internal/sessioncmd"
 	"github.com/liaogx/xiaohongshu-mcp/pkg/buildinfo"
 	"github.com/liaogx/xiaohongshu-mcp/xiaohongshu"
 	"github.com/sirupsen/logrus"
@@ -19,23 +19,20 @@ import (
 var version = buildinfo.DefaultVersion
 
 func main() {
-	var (
-		headless bool
-		port     string
-		token    string
-	)
-	showVersion := flag.Bool("version", false, "显示版本和构建信息，不启动浏览器或服务")
-	flag.BoolVar(&headless, "headless", true, "是否无头模式")
-	flag.StringVar(&port, "port", ":18060", "端口")
-	flag.StringVar(&token, "token", "", "鉴权 Token，留空则读取 AUTH_TOKEN")
-	flag.Parse()
-	if *showVersion {
-		fmt.Print(buildinfo.Summary("xiaohongshu-mcp", version))
-		return
-	}
+	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr, cliActions{
+		serve: startService,
+		login: func() error { return sessioncmd.Login(os.Stdout) },
+		recover: func(options sessioncmd.RecoverOptions) error {
+			return sessioncmd.Recover(options, os.Stdout)
+		},
+	}))
+}
+
+func startService(options serverOptions) error {
 	if err := xiaohongshu.ValidateSiteConfig(); err != nil {
-		logrus.Fatal(err)
+		return err
 	}
+	token := options.token
 	if token == "" {
 		token = os.Getenv("AUTH_TOKEN")
 	}
@@ -45,11 +42,11 @@ func main() {
 	// 只用内置浏览器。启动时就备好，缺它直接退出，不拖到第一个请求才失败。
 	binPath, err := browser.EnsureBrowser()
 	if err != nil {
-		logrus.Fatalf("%v", err)
+		return err
 	}
 	logrus.Infof("using browser binary: %s", binPath)
 
-	configs.InitHeadless(headless)
+	configs.InitHeadless(options.headless)
 	// 入口层解析出 seed 和代理，经 configs 透传给浏览器工厂。
 	// seed 取值：环境变量 > 会话文件 > 新生成并写回，保证同一账号每次启动一致。
 	configs.SetFingerprintSeed(configs.ResolveFingerprintSeed(
@@ -61,7 +58,8 @@ func main() {
 
 	// 创建并启动应用服务器
 	appServer := NewAppServer(xiaohongshuService, token)
-	if err := appServer.Start(port); err != nil {
-		logrus.Fatalf("failed to run server: %v", err)
+	if err := appServer.Start(options.port); err != nil {
+		return fmt.Errorf("failed to run server: %w", err)
 	}
+	return nil
 }

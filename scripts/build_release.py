@@ -16,8 +16,6 @@ from datetime import datetime, timezone
 PLATFORMS = (('darwin', 'arm64'), ('linux', 'amd64'), ('windows', 'amd64'))
 PROGRAMS = (
     ('xiaohongshu-mcp', '.'),
-    ('xiaohongshu-login', './cmd/login'),
-    ('xiaohongshu-recover', './cmd/recover'),
 )
 METADATA_PACKAGE = 'github.com/liaogx/xiaohongshu-mcp/pkg/buildinfo'
 REPOSITORY = 'https://github.com/liaogx/xiaohongshu-mcp'

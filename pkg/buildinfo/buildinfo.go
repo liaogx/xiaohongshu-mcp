@@ -7,7 +7,7 @@ import (
 )
 
 // DefaultVersion is shared by source builds of all distributed executables.
-const DefaultVersion = "1.0.0"
+const DefaultVersion = "1.0.1"
 
 // Release builds set these fields using the Go linker's -X option.
 var (
